@@ -1,0 +1,143 @@
+{
+  "meta": {
+    "title": "NUST Campus & Website Tour",
+    "description": "Autonomous narrated tour of the Namibia University of Science and Technology website",
+    "target_duration_seconds": 240,
+    "max_duration_seconds": 300
+  },
+  "settings": {
+    "viewport": { "width": 1920, "height": 1080 },
+    "video_size": { "width": 1920, "height": 1080 },
+    "voice": "am_michael",
+    "speech_speed": 1.0,
+    "language": "en-us",
+    "default_step_timeout": 45,
+    "max_retries_per_step": 3,
+    "browser": "chromium",
+    "preloader_selector": "#gva-preloader"
+  },
+  "steps": [
+    {
+      "id": "homepage",
+      "url": "https://www.nust.na",
+      "narration": "Welcome to the Namibia University of Science and Technology, commonly known as NUST. Let's take a tour of their website and explore what this leading Namibian institution has to offer.",
+      "actions": [
+        { "type": "wait_for_load" },
+        { "type": "wait_for_hidden", "selector": "#gva-preloader" },
+        { "type": "dismiss_popups" },
+        { "type": "pause", "duration": 2 }
+      ],
+      "assertions": [
+        { "type": "url_contains", "value": "nust.na" },
+        { "type": "title_contains", "value": "Namibia University" }
+      ],
+      "scroll": { "to": "bottom", "speed": "slow", "pause_at_bottom": 2 }
+    },
+    {
+      "id": "about",
+      "url": "https://www.nust.na/about-nust",
+      "narration": "NUST is Namibia's premier university of science and technology. Founded in nineteen ninety-six, the university is committed to providing internationally recognized, practice-oriented education in science, engineering, technology, and related disciplines.",
+      "actions": [
+        { "type": "wait_for_load" },
+        { "type": "wait_for_hidden", "selector": "#gva-preloader" },
+        { "type": "pause", "duration": 1 }
+      ],
+      "assertions": [
+        { "type": "url_contains", "value": "about" }
+      ],
+      "scroll": { "to": 1200, "speed": "medium" }
+    },
+    {
+      "id": "academics",
+      "url": "https://www.nust.na/academics",
+      "narration": "NUST offers a wide range of academic programs across multiple faculties, including Computing and Informatics, Engineering, Health and Natural Resources, and Commerce and Human Sciences. Each faculty is designed to produce industry-ready graduates.",
+      "actions": [
+        { "type": "wait_for_load" },
+        { "type": "wait_for_hidden", "selector": "#gva-preloader" },
+        { "type": "pause", "duration": 1 }
+      ],
+      "assertions": [
+        { "type": "url_contains", "value": "academics" }
+      ],
+      "scroll": { "to": "bottom", "speed": "slow", "pause_at_bottom": 2 }
+    },
+    {
+      "id": "admissions",
+      "url": "https://www.nust.na/admissions",
+      "narration": "For prospective students, the admissions page provides all the information you need to apply. NUST welcomes both local and international students, offering undergraduate, postgraduate, and research programs with competitive entry requirements.",
+      "actions": [
+        { "type": "wait_for_load" },
+        { "type": "wait_for_hidden", "selector": "#gva-preloader" },
+        { "type": "pause", "duration": 1 }
+      ],
+      "assertions": [
+        { "type": "url_contains", "value": "admission" }
+      ],
+      "scroll": { "to": 1000, "speed": "medium" }
+    },
+    {
+      "id": "research",
+      "url": "https://www.nust.na/dvc-rip",
+      "narration": "Research and innovation are at the heart of NUST's mission. The university conducts cutting-edge research in areas like renewable energy, information technology, health sciences, and environmental sustainability, contributing to Namibia's development goals.",
+      "actions": [
+        { "type": "wait_for_load" },
+        { "type": "wait_for_hidden", "selector": "#gva-preloader" },
+        { "type": "pause", "duration": 1 }
+      ],
+      "assertions": [
+        { "type": "url_contains", "value": "dvc-rip" }
+      ],
+      "scroll": { "to": 1000, "speed": "medium" }
+    },
+    {
+      "id": "students",
+      "url": "https://www.nust.na/students",
+      "narration": "Student life at NUST is vibrant and diverse. The campus, located in the heart of Windhoek, offers modern facilities, student accommodation, sports facilities, and a variety of clubs and societies. NUST truly provides a complete university experience.",
+      "actions": [
+        { "type": "wait_for_load" },
+        { "type": "wait_for_hidden", "selector": "#gva-preloader" },
+        { "type": "pause", "duration": 1 }
+      ],
+      "assertions": [
+        { "type": "url_contains", "value": "student" }
+      ],
+      "scroll": { "to": "bottom", "speed": "slow", "pause_at_bottom": 2 }
+    },
+    {
+      "id": "elearning",
+      "url": "https://elearning.nust.na",
+      "narration": "NUST also offers a comprehensive e-learning platform, allowing students to access course materials, submit assignments, and interact with lecturers online. This platform has been essential in supporting flexible and remote learning.",
+      "actions": [
+        { "type": "wait_for_load" },
+        { "type": "pause", "duration": 2 }
+      ],
+      "assertions": [
+        { "type": "url_contains", "value": "elearning" }
+      ],
+      "scroll": { "to": 400, "speed": "medium" }
+    },
+    {
+      "id": "closing",
+      "url": "https://www.nust.na",
+      "narration": "That concludes our tour of the NUST website. The Namibia University of Science and Technology continues to shape the future of education and innovation in Namibia. Thank you for joining us on this virtual tour.",
+      "actions": [
+        { "type": "wait_for_load" },
+        { "type": "wait_for_hidden", "selector": "#gva-preloader" },
+        { "type": "pause", "duration": 3 }
+      ],
+      "assertions": [
+        { "type": "url_contains", "value": "nust.na" }
+      ]
+    }
+  ],
+  "output": {
+    "path": "~/dev/autonomous-recording/output/nust-tour-v2.mp4",
+    "format": "mp4",
+    "video_codec": "libx264",
+    "video_preset": "medium",
+    "video_crf": 20,
+    "audio_codec": "aac",
+    "audio_bitrate": "192k",
+    "loudnorm": true
+  }
+}

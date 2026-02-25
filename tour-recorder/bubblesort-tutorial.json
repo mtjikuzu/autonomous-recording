@@ -1,0 +1,168 @@
+{
+  "meta": {
+    "title": "Java Bubble Sort Tutorial in VS Code",
+    "description": "Guided coding walkthrough that builds, compiles, and runs BubbleSort.java in code-server",
+    "target_duration_seconds": 360,
+    "max_duration_seconds": 480
+  },
+  "settings": {
+    "viewport": { "width": 1920, "height": 1080 },
+    "video_size": { "width": 1920, "height": 1080 },
+    "voice": "am_michael",
+    "speech_speed": 1.0,
+    "language": "en-us",
+    "default_step_timeout": 30,
+    "max_retries_per_step": 2,
+    "browser": "chromium",
+    "mode": "continuous"
+  },
+  "pre_setup": [
+    "mkdir -p /home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial",
+    "rm -f /home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial/BubbleSort.java /home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial/BubbleSort.class",
+    "touch /home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial/BubbleSort.java"
+  ],
+  "steps": [
+    {
+      "id": "open-workspace",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial",
+      "narration": "Hey everyone, welcome back. Today we are going to write one of the most classic sorting algorithms from scratch, bubble sort, in Java. Now, if you have ever shuffled a deck of cards by just swapping neighbors that are out of order, congratulations, you already understand the core idea behind bubble sort. It is not the fastest algorithm out there, but it is a fantastic starting point because the logic maps so cleanly to what you would do by hand. Let us jump into VS Code and start coding.",
+      "actions": [
+        { "type": "wait_for_load" },
+        { "type": "wait_for_selector", "selector": ".monaco-workbench", "state": "visible", "timeout": 30000 },
+        { "type": "pause", "duration": 2.0 },
+        { "type": "dismiss_popups" },
+        { "type": "pause", "duration": 1.0 },
+        { "type": "press_key", "key": "Escape" },
+        { "type": "pause", "duration": 0.3 },
+        { "type": "press_key", "key": "Escape" },
+        { "type": "pause", "duration": 0.3 },
+        { "type": "press_key", "key": "Escape" },
+        { "type": "pause", "duration": 0.5 },
+        { "type": "command_palette", "command": "View: Close All Editors" },
+        { "type": "pause", "duration": 0.5 },
+        { "type": "hide_secondary_sidebar" },
+        { "type": "pause", "duration": 1.0 }
+      ],
+      "assertions": [
+        { "type": "url_contains", "value": "127.0.0.1:8080" }
+      ]
+    },
+    {
+      "id": "create-file",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial",
+      "narration": "Alright, first things first. I will open our file using Quick Open, that is Control P. This is one of those keyboard shortcuts you absolutely want to memorize. In a real project with hundreds of files, Quick Open is way faster than clicking through the sidebar. We will open BubbleSort dot java.",
+      "actions": [
+        { "type": "press_key", "key": "Escape" },
+        { "type": "pause", "duration": 0.3 },
+        { "type": "press_key", "key": "Control+p" },
+        { "type": "pause", "duration": 0.8 },
+        { "type": "type_text", "text": "BubbleSort.java", "delay": 40 },
+        { "type": "pause", "duration": 0.5 },
+        { "type": "press_key", "key": "Enter" },
+        { "type": "pause", "duration": 2.0 },
+        { "type": "press_key", "key": "Escape" },
+        { "type": "pause", "duration": 0.5 },
+        { "type": "wait_for_selector", "selector": ".monaco-editor .view-lines", "state": "visible", "timeout": 10000 },
+        { "type": "hide_secondary_sidebar" },
+        { "type": "focus_editor" },
+        { "type": "select_all_and_delete" }
+      ]
+    },
+    {
+      "id": "type-class-and-signature",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial",
+      "narration": "Okay, let us start writing. In Java, the file name has to match the public class name, so we declare public class BubbleSort. Inside it, we create a static method called bubbleSort that takes an integer array. Notice I am making it static so we can call it directly from main without creating an object. We also grab the array length into a variable n, which we will use in our loop bounds. This avoids calling dot length repeatedly, which is a small but good habit.",
+      "actions": [
+        { "type": "focus_editor" },
+        { "type": "type_text", "delay": 40, "text": "public class BubbleSort {\n\n    public static void bubbleSort(int[] arr) {\n        int n = arr.length;\n" }
+      ]
+    },
+    {
+      "id": "type-nested-loops",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial",
+      "narration": "Here is where the real magic happens, the nested loops. Think of it this way. The outer loop represents each pass through the array. On every single pass, the largest unsorted element bubbles up to its correct position at the end, kind of like a heavy ball sinking to the bottom of a pool. The inner loop does the actual comparing. It walks through neighboring pairs, and whenever the left element is bigger than the right one, we know they need to swap. Notice I wrote n minus i minus 1 in the inner loop. That little optimization means we skip the elements that have already bubbled into their final spot.",
+      "actions": [
+        { "type": "pause", "duration": 0.3 },
+        { "type": "type_text", "delay": 40, "text": "        for (int i = 0; i < n - 1; i++) {\n            for (int j = 0; j < n - i - 1; j++) {\n                if (arr[j] > arr[j + 1]) {\n" }
+      ]
+    },
+    {
+      "id": "type-swap-and-close-method",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial",
+      "narration": "Now for the swap. This is a pattern you will see everywhere in programming, not just sorting. We use a temporary variable to hold one value while we overwrite it. Think of it like moving furniture. You cannot put the couch where the table is unless you move the table somewhere safe first. So we save arr j into temp, copy arr j plus one into arr j, and then put temp into arr j plus one. Three lines, clean swap, done. Let me close up the if block, both for loops, and the method.",
+      "actions": [
+        { "type": "pause", "duration": 0.3 },
+        { "type": "type_text", "delay": 40, "text": "                    int temp = arr[j];\n                    arr[j] = arr[j + 1];\n                    arr[j + 1] = temp;\n                }\n            }\n        }\n    }\n\n" }
+      ]
+    },
+    {
+      "id": "type-main-and-before-print",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial",
+      "narration": "Great, the sorting logic is done. But an algorithm without a way to test it is just a theory, right? So let us write a main method. I will create a sample array with some deliberately jumbled numbers. Before we sort, we print them out so we have a before snapshot. I am using a for-each loop here, which is the cleanest way to iterate when you do not need the index. The enhanced for loop was added back in Java 5 and it is perfect for simple traversals like this.",
+      "actions": [
+        { "type": "pause", "duration": 0.3 },
+        { "type": "type_text", "delay": 40, "text": "    public static void main(String[] args) {\n        int[] numbers = {64, 34, 25, 12, 22, 11, 90};\n\n        System.out.println(\"Before sorting:\");\n        for (int num : numbers) {\n            System.out.print(num + \" \");\n        }\n        System.out.println();\n\n" }
+      ]
+    },
+    {
+      "id": "type-after-sort-output-and-close",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial",
+      "narration": "Now the moment of truth. We call our bubbleSort method, and since Java arrays are passed by reference, the original numbers array gets sorted in place. No need to capture a return value. Then we print the after snapshot using the exact same loop. If our algorithm is correct, we should see the numbers go from that jumbled mess to a nice ascending sequence. Let me close out main and the class.",
+      "actions": [
+        { "type": "pause", "duration": 0.3 },
+        { "type": "type_text", "delay": 40, "text": "        bubbleSort(numbers);\n\n        System.out.println(\"After sorting:\");\n        for (int num : numbers) {\n            System.out.print(num + \" \");\n        }\n        System.out.println();\n    }\n}\n" },
+        { "type": "pause", "duration": 1.0 }
+      ]
+    },
+    {
+      "id": "save-file",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial",
+      "narration": "Quick habit check. Always save before you compile. I cannot tell you how many times students come to me saying their code does not work, and it turns out they just forgot to save. Control S, takes half a second, saves you five minutes of confusion.",
+      "actions": [
+        { "type": "focus_editor" },
+        { "type": "press_key", "key": "Control+s" },
+        { "type": "pause", "duration": 1.0 }
+      ]
+    },
+    {
+      "id": "open-terminal-and-compile",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial",
+      "narration": "Let us open up the integrated terminal. One of the things I love about VS Code is you do not have to leave the editor to compile and run. We will use javac, the Java compiler. If javac finishes without printing anything, that is actually good news. Silence means no errors. Behind the scenes, it generates a dot class file containing bytecode that the Java Virtual Machine can execute.",
+      "actions": [
+        { "type": "command_palette", "command": "Terminal: Create New Terminal" },
+        { "type": "pause", "duration": 3.0 },
+        { "type": "terminal_type", "text": "cd /home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial && javac BubbleSort.java", "press_enter": true },
+        { "type": "pause", "duration": 3.0 }
+      ]
+    },
+    {
+      "id": "run-program",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial",
+      "narration": "Compilation passed. Now let us run it with the java command. Notice we do not include the dot class extension, just the class name. And here we go. You should see the before line with our original scrambled numbers, and the after line with everything neatly sorted in ascending order. If you are following along and your output matches, congratulations, your bubble sort is working perfectly.",
+      "actions": [
+        { "type": "terminal_type", "text": "java BubbleSort", "press_enter": true },
+        { "type": "pause", "duration": 3.0 }
+      ]
+    },
+    {
+      "id": "closing",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial",
+      "narration": "And that is bubble sort, start to finish. Let me leave you with a few things to think about. Bubble sort runs in O of n squared time in the worst case, which means if you double the size of your array, it takes roughly four times as long. For seven elements like we used, that is totally fine. For seven million? You would want something like merge sort or quicksort which run in O of n log n. But here is the thing. Understanding bubble sort teaches you the fundamentals, comparison, swapping, nested iteration, that every other sorting algorithm builds on. So this was absolutely worth your time. See you in the next one.",
+      "actions": [
+        { "type": "focus_editor" },
+        { "type": "highlight_lines", "from_line": 3, "to_line": 11 },
+        { "type": "pause", "duration": 2.5 }
+      ]
+    }
+  ],
+  "output": {
+    "path": "~/dev/autonomous-recording/output/bubblesort-tutorial.mp4",
+    "format": "mp4",
+    "video_codec": "libx264",
+    "video_preset": "medium",
+    "video_crf": 20,
+    "audio_codec": "aac",
+    "audio_bitrate": "192k",
+    "loudnorm": true
+  }
+}

@@ -1,0 +1,195 @@
+{
+  "meta": {
+    "title": "Java Functions and Methods Tutorial in VS Code",
+    "description": "Guided coding walkthrough teaching methods in Java: void methods, parameters, return values, overloading, and recursion",
+    "target_duration_seconds": 480,
+    "max_duration_seconds": 600
+  },
+  "settings": {
+    "viewport": { "width": 1920, "height": 1080 },
+    "video_size": { "width": 1920, "height": 1080 },
+    "voice": "am_michael",
+    "speech_speed": 1.0,
+    "language": "en-us",
+    "default_step_timeout": 30,
+    "max_retries_per_step": 2,
+    "browser": "chromium",
+    "mode": "continuous"
+  },
+  "pre_setup": [
+    "mkdir -p /home/mtjikuzu/dev/autonomous-recording/workspaces/java-functions",
+    "rm -f /home/mtjikuzu/dev/autonomous-recording/workspaces/java-functions/MethodsDemo.java /home/mtjikuzu/dev/autonomous-recording/workspaces/java-functions/MethodsDemo.class",
+    "touch /home/mtjikuzu/dev/autonomous-recording/workspaces/java-functions/MethodsDemo.java"
+  ],
+  "steps": [
+    {
+      "id": "open-workspace",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-functions",
+      "narration": "Hey everyone, welcome back. Today we are diving into one of the most important building blocks in programming, functions and methods. In Java, we call them methods, but the idea is universal across every language. A method is basically a reusable block of code that does one specific job. Think of it like a recipe. Instead of writing out the same cooking instructions every time, you give the recipe a name and just reference it whenever you need it. By the end of this tutorial, you will know how to create methods that take inputs, return outputs, and even call themselves. Let us get started.",
+      "actions": [
+        { "type": "wait_for_load" },
+        { "type": "wait_for_selector", "selector": ".monaco-workbench", "state": "visible", "timeout": 30000 },
+        { "type": "pause", "duration": 2.0 },
+        { "type": "dismiss_popups" },
+        { "type": "pause", "duration": 1.0 },
+        { "type": "press_key", "key": "Escape" },
+        { "type": "pause", "duration": 0.3 },
+        { "type": "press_key", "key": "Escape" },
+        { "type": "pause", "duration": 0.3 },
+        { "type": "press_key", "key": "Escape" },
+        { "type": "pause", "duration": 0.5 },
+        { "type": "command_palette", "command": "View: Close All Editors" },
+        { "type": "pause", "duration": 0.5 },
+        { "type": "hide_secondary_sidebar" },
+        { "type": "pause", "duration": 1.0 }
+      ],
+      "assertions": [
+        { "type": "url_contains", "value": "127.0.0.1:8080" }
+      ]
+    },
+    {
+      "id": "open-file",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-functions",
+      "narration": "Alright, let us open our file. I have an empty MethodsDemo dot java ready to go. I will use Quick Open with Control P, which is a keyboard shortcut you should absolutely have in your muscle memory by now. In a real project you could have hundreds of files, and Quick Open is the fastest way to jump to any of them.",
+      "actions": [
+        { "type": "press_key", "key": "Escape" },
+        { "type": "pause", "duration": 0.3 },
+        { "type": "press_key", "key": "Control+p" },
+        { "type": "pause", "duration": 0.8 },
+        { "type": "type_text", "text": "MethodsDemo.java", "delay": 40 },
+        { "type": "pause", "duration": 0.5 },
+        { "type": "press_key", "key": "Enter" },
+        { "type": "pause", "duration": 2.0 },
+        { "type": "press_key", "key": "Escape" },
+        { "type": "pause", "duration": 0.5 },
+        { "type": "wait_for_selector", "selector": ".monaco-editor .view-lines", "state": "visible", "timeout": 10000 },
+        { "type": "hide_secondary_sidebar" },
+        { "type": "focus_editor" },
+        { "type": "select_all_and_delete" }
+      ]
+    },
+    {
+      "id": "type-class-and-greet",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-functions",
+      "narration": "Let us start with the class declaration and our very first method. This one is the simplest kind, a void method with no parameters. Void means it does not return anything, it just performs an action. Think of it like flipping a light switch, something happens, but the switch does not hand you anything back. Our greet method simply prints a welcome message. Notice the keywords: public means it is accessible from anywhere, static means we can call it without creating an object, and void means no return value.",
+      "actions": [
+        { "type": "focus_editor" },
+        { "type": "type_text", "delay": 40, "text": "public class MethodsDemo {\n\n    public static void greet() {\n        System.out.println(\"Hello! Welcome to the methods tutorial.\");\n    }\n\n" }
+      ]
+    },
+    {
+      "id": "type-greet-user",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-functions",
+      "narration": "Now let us make things more interesting by adding a parameter. A parameter is a value you pass into a method so it can customize its behavior. This greetUser method takes a String called name. So instead of one generic greeting, we can now say hello to anyone. This is a huge concept. Parameters turn a rigid, one-trick method into something flexible and reusable. You write the logic once, and the caller decides the details.",
+      "actions": [
+        { "type": "pause", "duration": 0.3 },
+        { "type": "type_text", "delay": 40, "text": "    public static void greetUser(String name) {\n        System.out.println(\"Hello, \" + name + \"! Nice to meet you.\");\n    }\n\n" }
+      ]
+    },
+    {
+      "id": "type-add-int",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-functions",
+      "narration": "Next up, a method that actually gives something back. Instead of void, this one returns an int. The return type tells Java what kind of value the caller will receive. Our add method takes two integers, adds them together, and hands back the result using the return keyword. This is like asking someone a question. You give them the inputs, what is five plus three, and they give you back the answer, eight. The caller can then store that answer in a variable and use it however they want.",
+      "actions": [
+        { "type": "pause", "duration": 0.3 },
+        { "type": "type_text", "delay": 40, "text": "    public static int add(int a, int b) {\n        return a + b;\n    }\n\n" }
+      ]
+    },
+    {
+      "id": "type-add-double",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-functions",
+      "narration": "Here is something really cool, method overloading. We are creating another method called add, same name, but this time it takes two doubles instead of two ints. Java is totally fine with this. It looks at the types of the arguments you pass in and figures out which version to call. If you pass two integers, it calls the int version. If you pass two decimals, it calls the double version. This is a form of polymorphism, one name, multiple behaviors depending on context. It keeps your code clean because you do not need separate names like addInts and addDoubles.",
+      "actions": [
+        { "type": "pause", "duration": 0.3 },
+        { "type": "type_text", "delay": 40, "text": "    public static double add(double a, double b) {\n        return a + b;\n    }\n\n" }
+      ]
+    },
+    {
+      "id": "type-factorial",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-functions",
+      "narration": "Now for the grand finale of method concepts, recursion. A recursive method is one that calls itself. It sounds like an infinite loop, and it would be, except we always include a base case that stops the chain. Our factorial method says: if n is one or less, just return one, that is the base case. Otherwise, multiply n by factorial of n minus one. So factorial of five becomes five times factorial of four, which becomes four times factorial of three, and so on, until we hit one. It is like those Russian nesting dolls. You keep opening them until you reach the smallest one, and then you work your way back out.",
+      "actions": [
+        { "type": "pause", "duration": 0.3 },
+        { "type": "type_text", "delay": 40, "text": "    public static int factorial(int n) {\n        if (n <= 1) {\n            return 1;\n        }\n        return n * factorial(n - 1);\n    }\n\n" }
+      ]
+    },
+    {
+      "id": "type-main-greet-calls",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-functions",
+      "narration": "Alright, now we need a main method to actually test everything. Main is the entry point that Java looks for when you run a program. First, let us call our simple greet method, no arguments needed. Then we call greetUser twice with different names, Alice and Bob. Notice how the same method produces different output depending on what we pass in. That is the beauty of parameters.",
+      "actions": [
+        { "type": "pause", "duration": 0.3 },
+        { "type": "type_text", "delay": 40, "text": "    public static void main(String[] args) {\n        greet();\n\n        greetUser(\"Alice\");\n        greetUser(\"Bob\");\n\n" }
+      ]
+    },
+    {
+      "id": "type-main-add-calls",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-functions",
+      "narration": "Now let us test our overloaded add methods. We call add with five and three, which are integers, so Java picks the int version. Then we call add with two point five and three point seven, which are doubles, so Java automatically picks the double version. We store each result and print it out. When you run this, you will see eight for the integer addition and six point two for the double addition. Same method name, different types, correct behavior each time.",
+      "actions": [
+        { "type": "pause", "duration": 0.3 },
+        { "type": "type_text", "delay": 40, "text": "        int sum = add(5, 3);\n        System.out.println(\"add(5, 3) = \" + sum);\n\n        double dSum = add(2.5, 3.7);\n        System.out.println(\"add(2.5, 3.7) = \" + dSum);\n\n" }
+      ]
+    },
+    {
+      "id": "type-main-factorial-and-close",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-functions",
+      "narration": "Finally, let us test recursion. We compute factorial of five, which should be one hundred twenty, that is five times four times three times two times one. And factorial of seven, which is five thousand forty. These numbers grow incredibly fast, which is actually a good lesson about recursion. It is elegant and powerful, but for very large inputs you might run into stack overflow errors because each call adds a new frame to the call stack. For now though, these values are perfectly fine. Let me close out main and the class.",
+      "actions": [
+        { "type": "pause", "duration": 0.3 },
+        { "type": "type_text", "delay": 40, "text": "        int fact5 = factorial(5);\n        System.out.println(\"factorial(5) = \" + fact5);\n\n        int fact7 = factorial(7);\n        System.out.println(\"factorial(7) = \" + fact7);\n    }\n}\n" },
+        { "type": "pause", "duration": 1.0 }
+      ]
+    },
+    {
+      "id": "save-file",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-functions",
+      "narration": "Quick habit reminder, always save before you compile. Control S. It takes less than a second and saves you from the classic mistake of compiling stale code and wondering why your changes are not showing up.",
+      "actions": [
+        { "type": "focus_editor" },
+        { "type": "press_key", "key": "Control+s" },
+        { "type": "pause", "duration": 1.0 }
+      ]
+    },
+    {
+      "id": "open-terminal-and-compile",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-functions",
+      "narration": "Let us open the integrated terminal and compile. We use javac, the Java compiler. If you see no output after running javac, that means zero errors, which is exactly what we want. Behind the scenes, the compiler translates our human readable Java into bytecode, a dot class file, that the Java Virtual Machine knows how to execute.",
+      "actions": [
+        { "type": "command_palette", "command": "Terminal: Create New Terminal" },
+        { "type": "pause", "duration": 3.0 },
+        { "type": "terminal_type", "text": "cd /home/mtjikuzu/dev/autonomous-recording/workspaces/java-functions && javac MethodsDemo.java", "press_enter": true },
+        { "type": "pause", "duration": 3.0 }
+      ]
+    },
+    {
+      "id": "run-program",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-functions",
+      "narration": "Compilation succeeded, no errors. Now let us run it. Watch the output carefully. First you should see the generic greeting from our void method. Then two personalized greetings from greetUser showing how parameters customize behavior. Then the two add results demonstrating method overloading, eight for integers and six point two for doubles. And finally the factorial results, one hundred twenty and five thousand forty, proving our recursion works perfectly.",
+      "actions": [
+        { "type": "terminal_type", "text": "java MethodsDemo", "press_enter": true },
+        { "type": "pause", "duration": 4.0 }
+      ]
+    },
+    {
+      "id": "closing",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-functions",
+      "narration": "And there it is, everything working exactly as expected. Let us recap what we covered. Void methods that perform actions without returning anything. Parameters that make methods flexible and reusable. Return values that let methods compute and hand back results. Method overloading, where the same name handles different types. And recursion, where a method solves a problem by calling itself with a simpler version of the same problem. These five concepts are the foundation of writing clean, modular, maintainable code in any language, not just Java. Once you truly understand methods, you are ready to tackle object oriented programming, design patterns, and everything that builds on top of them. See you in the next one.",
+      "actions": [
+        { "type": "focus_editor" },
+        { "type": "highlight_lines", "from_line": 1, "to_line": 25 },
+        { "type": "pause", "duration": 3.0 }
+      ]
+    }
+  ],
+  "output": {
+    "path": "~/dev/autonomous-recording/output/functions-tutorial.mp4",
+    "format": "mp4",
+    "video_codec": "libx264",
+    "video_preset": "medium",
+    "video_crf": 20,
+    "audio_codec": "aac",
+    "audio_bitrate": "192k",
+    "loudnorm": true
+  }
+}
