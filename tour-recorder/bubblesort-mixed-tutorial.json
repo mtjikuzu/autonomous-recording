@@ -1,0 +1,214 @@
+{
+  "meta": {
+    "title": "Java Bubble Sort Tutorial - Mixed Slides and Demo",
+    "description": "Tutorial alternating between Gamma slides (theory) and live code demonstrations",
+    "target_duration_seconds": 480,
+    "max_duration_seconds": 600
+  },
+  "settings": {
+    "viewport": { "width": 1920, "height": 1080 },
+    "video_size": { "width": 1920, "height": 1080 },
+    "voice": "am_michael",
+    "speech_speed": 1.0,
+    "language": "en-us",
+    "default_step_timeout": 30,
+    "max_retries_per_step": 2,
+    "browser": "chromium",
+    "mode": "continuous"
+  },
+  "pre_setup": [
+    "mkdir -p /home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial",
+    "rm -f /home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial/BubbleSort.java /home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial/BubbleSort.class",
+    "touch /home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial/BubbleSort.java"
+  ],
+  "slides": {
+    "generate": true,
+    "theme": "Chisel",
+    "cache_key": "bubblesort-theory-v1",
+    "content": [
+      {
+        "type": "title",
+        "title": "Understanding Bubble Sort",
+        "subtitle": "A gentle introduction to the classic sorting algorithm"
+      },
+      {
+        "type": "content",
+        "title": "What is Bubble Sort?",
+        "bullet_points": [
+          "Simple comparison-based sorting algorithm",
+          "Repeatedly steps through the list",
+          "Compares adjacent elements and swaps them if needed",
+          "Named for the way smaller elements 'bubble' to the top"
+        ]
+      },
+      {
+        "type": "content",
+        "title": "How It Works",
+        "bullet_points": [
+          "Start from the beginning of the array",
+          "Compare each pair of adjacent elements",
+          "Swap them if they are in the wrong order",
+          "Repeat until no more swaps are needed"
+        ]
+      },
+      {
+        "type": "content",
+        "title": "Time Complexity",
+        "bullet_points": [
+          "Best Case: O(n) when array is already sorted",
+          "Average Case: O(n²)",
+          "Worst Case: O(n²) when array is reverse sorted",
+          "Space Complexity: O(1) - sorts in place"
+        ]
+      },
+      {
+        "type": "title",
+        "title": "Let's Code!",
+        "subtitle": "Implementing Bubble Sort in Java"
+      }
+    ]
+  },
+  "segments": [
+    {
+      "id": "intro-slides",
+      "type": "slides",
+      "narration": "Before we dive into code, let's understand what bubble sort is and how it works. Bubble sort is one of the simplest sorting algorithms to understand. Imagine you have a deck of cards and you want to sort them. You could go through the deck repeatedly, comparing each pair of adjacent cards. If they're in the wrong order, you swap them. After each pass through the deck, the largest unsorted card 'bubbles up' to its correct position at the end. That's exactly how bubble sort works on an array of numbers.",
+      "slides": {
+        "range": [1, 4],
+        "advance_interval": 8000
+      },
+      "duration": 32
+    },
+    {
+      "id": "demo-setup",
+      "type": "demo",
+      "narration": "Alright, now that we understand the theory, let's implement bubble sort in Java. We'll start by setting up our workspace and creating the BubbleSort.java file.",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial",
+      "actions": [
+        { "type": "wait_for_load" },
+        { "type": "wait_for_selector", "selector": ".monaco-workbench", "state": "visible", "timeout": 30000 },
+        { "type": "pause", "duration": 2.0 },
+        { "type": "dismiss_popups" },
+        { "type": "pause", "duration": 1.0 },
+        { "type": "press_key", "key": "Escape" },
+        { "type": "pause", "duration": 0.3 },
+        { "type": "press_key", "key": "Escape" },
+        { "type": "pause", "duration": 0.3 },
+        { "type": "press_key", "key": "Escape" },
+        { "type": "pause", "duration": 0.5 },
+        { "type": "command_palette", "command": "View: Close All Editors" },
+        { "type": "pause", "duration": 0.5 },
+        { "type": "hide_secondary_sidebar" },
+        { "type": "pause", "duration": 1.0 },
+        { "type": "press_key", "key": "Control+p" },
+        { "type": "pause", "duration": 0.8 },
+        { "type": "type_text", "text": "BubbleSort.java", "delay": 40 },
+        { "type": "pause", "duration": 0.5 },
+        { "type": "press_key", "key": "Enter" },
+        { "type": "pause", "duration": 2.0 },
+        { "type": "press_key", "key": "Escape" },
+        { "type": "pause", "duration": 0.5 },
+        { "type": "wait_for_selector", "selector": ".monaco-editor .view-lines", "state": "visible", "timeout": 10000 },
+        { "type": "hide_secondary_sidebar" },
+        { "type": "focus_editor" },
+        { "type": "select_all_and_delete" }
+      ]
+    },
+    {
+      "id": "demo-class-structure",
+      "type": "demo",
+      "narration": "In Java, every public class lives in its own file. We'll create our BubbleSort class with a static bubbleSort method. The method takes an integer array and will sort it in place using the bubble sort algorithm.",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial",
+      "actions": [
+        { "type": "focus_editor" },
+        { "type": "type_text", "delay": 40, "text": "public class BubbleSort {\n\n    public static void bubbleSort(int[] arr) {\n        int n = arr.length;\n" }
+      ]
+    },
+    {
+      "id": "demo-nested-loops",
+      "type": "demo",
+      "narration": "The heart of bubble sort is two nested loops. The outer loop controls how many elements we've already bubbled to the end. After each pass, the largest remaining element is in place, so we can shorten the inner loop. The inner loop does the actual comparisons and swaps.",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial",
+      "actions": [
+        { "type": "focus_editor" },
+        { "type": "type_text", "delay": 40, "text": "        for (int i = 0; i < n - 1; i++) {\n            for (int j = 0; j < n - i - 1; j++) {\n" }
+      ]
+    },
+    {
+      "id": "complexity-slide",
+      "type": "slides",
+      "narration": "Before we finish the code, let's quickly discuss complexity. Bubble sort has a best case of O of n, which happens when the array is already sorted and we can detect that no swaps were needed. But in the average and worst cases, it's O of n squared because we have nested loops each potentially running n times. This makes bubble sort inefficient for large datasets, but its simplicity makes it great for learning and small arrays.",
+      "slides": {
+        "range": [4, 4],
+        "advance_interval": 5000
+      },
+      "duration": 15
+    },
+    {
+      "id": "demo-swap-logic",
+      "type": "demo",
+      "narration": "Now for the swap logic. If the current element is greater than the next one, they're out of order and we swap them. This 'bubbles' the larger element toward the end of the array. After completing all passes, the array is sorted.",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial",
+      "actions": [
+        { "type": "focus_editor" },
+        { "type": "type_text", "delay": 40, "text": "                if (arr[j] > arr[j + 1]) {\n                    int temp = arr[j];\n                    arr[j] = arr[j + 1];\n                    arr[j + 1] = temp;\n                }\n            }\n        }\n    }\n" }
+      ]
+    },
+    {
+      "id": "demo-main-method",
+      "type": "demo",
+      "narration": "Let's add a main method to test our bubble sort. We'll create a sample array, print it before sorting, call our bubbleSort method, and then print the result to verify it works correctly.",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial",
+      "actions": [
+        { "type": "focus_editor" },
+        { "type": "type_text", "delay": 40, "text": "    public static void main(String[] args) {\n        int[] arr = {64, 34, 25, 12, 22, 11, 90};\n        System.out.println(\"Original array:\");\n        for (int num : arr) {\n            System.out.print(num + \" \");\n        }\n        System.out.println();\n        \n        bubbleSort(arr);\n        \n        System.out.println(\"Sorted array:\");\n        for (int num : arr) {\n            System.out.print(num + \" \");\n        }\n        System.out.println();\n    }\n}" }
+      ]
+    },
+    {
+      "id": "demo-save",
+      "type": "demo",
+      "narration": "Good practice is to save your work regularly. Let's save the file now before we compile and run it.",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial",
+      "actions": [
+        { "type": "press_key", "key": "Control+s" },
+        { "type": "pause", "duration": 1.0 }
+      ]
+    },
+    {
+      "id": "demo-compile-run",
+      "type": "demo",
+      "narration": "Time to see our bubble sort in action. First we'll compile the Java code using javac, then run it with java. You should see the original unsorted array followed by the sorted array, confirming our implementation works correctly.",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial",
+      "actions": [
+        { "type": "command_palette", "command": "Terminal: Create New Terminal" },
+        { "type": "pause", "duration": 3.0 },
+        { "type": "terminal_type", "text": "javac BubbleSort.java", "press_enter": true },
+        { "type": "pause", "duration": 3.0 },
+        { "type": "terminal_type", "text": "java BubbleSort", "press_enter": true },
+        { "type": "pause", "duration": 3.0 }
+      ]
+    },
+    {
+      "id": "outro-slides",
+      "type": "slides",
+      "narration": "And that's bubble sort implemented in Java. Today we covered the theory behind bubble sort, its time and space complexity, and walked through a complete implementation. Remember, while bubble sort isn't the most efficient for large datasets, understanding it builds your intuition about sorting algorithms and helps you appreciate more advanced techniques. Keep practicing, and happy coding!",
+      "slides": {
+        "range": [5, 5],
+        "advance_interval": 6000
+      },
+      "duration": 10
+    }
+  ],
+  "output": {
+    "path": "~/dev/autonomous-recording/output/bubblesort-mixed-tutorial.mp4",
+    "format": "mp4",
+    "video_codec": "libx264",
+    "video_preset": "medium",
+    "video_crf": 20,
+    "audio_codec": "aac",
+    "audio_bitrate": "192k",
+    "loudnorm": true,
+    "intro_clip": "~/dev/autonomous-recording/overlays/out/bubblesort-intro.mp4",
+    "outro_clip": "~/dev/autonomous-recording/overlays/out/bubblesort-outro.mp4"
+  }
+}

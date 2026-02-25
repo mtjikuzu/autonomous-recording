@@ -151,3 +151,198 @@ Match existing thumbnail aesthetic:
 - Code colors: Keywords `#FF7B72`, Values `#79C0FF`
 - Font: JetBrains Mono
 
+
+
+## Mixed Slides + Demo Workflow (New)
+
+> Tutorial videos that alternate between PowerPoint-style slides (theory) and live code demonstrations (practice).
+
+### Overview
+
+Instead of just recording code-server demos, the mixed workflow lets you:
+1. **Generate slides** via Gamma API (or create placeholder images)
+2. **Record slide segments** showing theory/concepts
+3. **Record demo segments** showing live coding
+4. **Automatically assemble** everything in sequence
+
+### Architecture
+
+```
+JSON Spec with "segments"
+   │
+   ├─► Generate/Cache Slides via Gamma API (if configured)
+   │
+   ├─► For each segment:
+   │     ├── "slides" type → Serve slide-viewer.html → Record with Playwright
+   │     └── "demo" type  → Record code-server with Playwright
+   │
+   └─► FFmpeg → Concatenate all segment clips → Final MP4
+```
+
+### Spec Format
+
+```json
+{
+  "meta": { ... },
+  "settings": { ... },
+  "slides": {
+    "generate": true,
+    "theme": "Chisel",
+    "cache_key": "tutorial-theory-v1",
+    "content": [
+      {
+        "type": "title",
+        "title": "Understanding Bubble Sort",
+        "subtitle": "A gentle introduction"
+      },
+      {
+        "type": "content",
+        "title": "What is Bubble Sort?",
+        "bullet_points": [
+          "Simple comparison-based sorting algorithm",
+          "Repeatedly steps through the list"
+        ]
+      }
+    ]
+  },
+  "segments": [
+    {
+      "id": "intro-slides",
+      "type": "slides",
+      "narration": "Before we dive into code...",
+      "slides": { "range": [1, 3], "advance_interval": 8000 },
+      "duration": 24
+    },
+    {
+      "id": "live-demo",
+      "type": "demo",
+      "narration": "Now let's implement this...",
+      "url": "http://127.0.0.1:8080/?folder=...",
+      "actions": [ ... ]
+    }
+  ]
+}
+```
+
+### Segment Types
+
+#### `slides` Segments
+
+Display Gamma-generated (or placeholder) slides with auto-advance.
+
+```json
+{
+  "id": "theory-part",
+  "type": "slides",
+  "narration": "Explanation of the concept...",
+  "slides": {
+    "range": [1, 4],        // Which slides to show (1-indexed)
+    "advance_interval": 8000 // Milliseconds per slide
+  },
+  "duration": 32            // Total segment duration (for validation)
+}
+```
+
+**How it works:**
+1. Pipeline generates/cache slides via `gamma_client.py`
+2. Serves `slide-viewer.html` with slides as query parameters
+3. Playwright captures the slide viewer at 1920×1080
+4. JavaScript auto-advances slides at specified interval
+
+#### `demo` Segments
+
+Live code-server recording (same as traditional steps).
+
+```json
+{
+  "id": "coding-demo",
+  "type": "demo",
+  "narration": "Let's write the code...",
+  "url": "http://127.0.0.1:8080/?folder=...",
+  "actions": [
+    { "type": "wait_for_load" },
+    { "type": "type_text", "text": "public class...", "delay": 40 }
+  ]
+}
+```
+
+### Slide Generation
+
+**Via Gamma API (requires API key):**
+```bash
+export GAMMA_API_KEY="sk-gamma-..."
+python record-tour.py tutorial.json
+```
+
+**Fallback (no API key):**
+Automatically generates placeholder slides using PIL with:
+- Dark background (#0D1117)
+- Title in gold accent (#F7C948)
+- Bullet points in white
+- 1920×1080 resolution
+
+### Caching
+
+Slides are cached by `cache_key` in `~/.cache/gamma-slides/{cache_key}/`:
+- `slide-001.png`
+- `slide-002.png`
+- ...
+
+Subsequent runs with the same `cache_key` reuse cached slides (no API call).
+
+### Slide Viewer Component
+
+**File:** `slide-viewer.html`
+
+Features:
+- Full-screen 1920×1080 display
+- Keyboard navigation (arrow keys)
+- Auto-advance mode
+- Present mode (hides controls)
+- Playwright automation API exposed via `window.slideViewer`
+
+### Common Issues
+
+| Issue | Cause | Fix |
+|---|---|---|
+| Slides not generating | Missing GAMMA_API_KEY env var | Set key or use fallback (auto) |
+| Slide images blurry | PNG resolution mismatch | Ensure 1920×1080 PNGs |
+| Wrong slide shown | Range indices off-by-one | Remember: 1-indexed range |
+| Auto-advance too fast/slow | interval in milliseconds | Typical: 5000-8000ms per slide |
+| Slide viewer not found | HTML file path wrong | Check `slide-viewer.html` exists next to `record-tour.py` |
+
+### Workflow Comparison
+
+| Feature | Traditional Steps | Mixed Segments |
+|---|---|---|
+| Format | `steps[]` | `segments[]` |
+| Content | Code demos only | Slides + demos |
+| Slides | ❌ | ✅ Via Gamma API |
+| Backward compat | ✅ | ✅ (auto-detects format) |
+| Spec complexity | Lower | Higher |
+| Use case | Pure coding tutorials | Theory + practice |
+
+### Backward Compatibility
+
+The pipeline auto-detects spec format:
+- `steps` present → traditional workflow
+- `segments` present → mixed workflow
+- Both work with existing intro/outro overlays
+
+### Creating Slides
+
+**Option 1: Gamma API (production quality)**
+1. Get API key from gamma.app
+2. Set `GAMMA_API_KEY` environment variable
+3. Define slides in spec with `generate: true`
+4. Run pipeline → slides generated and cached
+
+**Option 2: Manual (full control)**
+1. Create PNGs in `~/.cache/gamma-slides/{cache_key}/`
+2. Name them `slide-001.png`, `slide-002.png`, etc.
+3. Set matching `cache_key` in spec
+4. Pipeline uses cached slides directly
+
+**Option 3: Placeholder (fallback)**
+- Don't set API key
+- Pipeline auto-generates simple text-based slides using PIL

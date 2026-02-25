@@ -19,6 +19,7 @@
 11. [Narration and Duration](#11-narration-and-duration)
 12. [FFmpeg Overlay Concatenation](#12-ffmpeg-overlay-concatenation)
 13. [Remotion Integration](#13-remotion-integration)
+14. [Mixed Slides and Demo Workflow](#14-mixed-slides-and-demo-workflow)
 ---
 
 ## 1. Terminal Interaction
@@ -601,3 +602,216 @@ Before running `record-tour.py` with overlays:
 
 > **Document version:** 2025-02-25
 > **Last updated:** Added Remotion overlay lessons and FFmpeg concat troubleshooting
+
+
+## 14. Mixed Slides and Demo Workflow
+
+> Lessons from implementing alternating slide presentations and live code demonstrations.
+
+### Problem: Code-only tutorials lack theoretical foundation
+
+Pure code demos work for experienced learners, but beginners often need:
+- Visual explanations of concepts before seeing code
+- Theory/practice alternation for better retention
+- Visual aids (diagrams, bullet points) that code can't show
+
+### Solution Architecture
+
+**Two-phase approach:**
+1. **Slides** (Gamma-generated or placeholder): Theory, concepts, diagrams
+2. **Demo** (code-server): Live implementation of what was just explained
+
+### Key Implementation Decisions
+
+#### 1. Slide Generation Strategy
+
+| Approach | Pros | Cons | When to Use |
+|---|---|---|---|
+| **Gamma API** | Professional design, multiple themes | Requires API key, rate limits | Production videos |
+| **PIL Placeholders** | No dependencies, fast, free | Basic design only | Development/testing |
+| **Manual PNGs** | Full creative control | Time-intensive, not automated | Special cases |
+
+**Recommendation:** Default to PIL placeholders in dev, switch to Gamma for production.
+
+#### 2. Segment Recording Order
+
+Segments are recorded **sequentially**, not in parallel:
+```
+slide-segment-1 → demo-segment-1 → slide-segment-2 → demo-segment-2
+```
+
+This matters because:
+- Browser context persists within segment types
+- Slides use `file://` URLs (slide-viewer.html)
+- Demos use `http://127.0.0.1:8080` URLs
+
+**Lesson:** Don't try to batch record all slides then all demos. The narrative flow requires sequential recording.
+
+#### 3. Slide Caching is Critical
+
+Gamma API has rate limits and costs. Always cache:
+
+```python
+# Cache key based on content hash
+cache_key = slides_config.get("cache_key", "default")
+slides_dir = work_dir / "slides" / cache_key
+
+# Check cache before API call
+if slides_dir.exists() and any(slides_dir.glob("slide-*.png")):
+    return slides_dir  # Reuse cached
+```
+
+**Lesson:** Changing a single word in slide content should regenerate only that slide, not all slides. Use content hashing for granular cache invalidation.
+
+### Common Pitfalls
+
+| Pitfall | Why It Happens | Solution |
+|---|---|---|
+| **Slides show "Loading..." indefinitely** | `slide-viewer.html` can't find PNG files | Check `slides` query param points to correct directory |
+| **Wrong slide range shown** | Off-by-one in 1-indexed range | Slide 1 = `slide-001.png`, not `slide-000.png` |
+| **Slide advance too jerky** | `advance_interval` too short | Minimum 5000ms for reading + comprehension |
+| **Slide viewer has scrollbars** | Browser viewport != 1920×1080 | Set exact viewport size in Playwright context |
+| **Demo segment shows slide UI** | Browser context reused incorrectly | Create new context for each segment type |
+| **Cached slides outdated** | Changed content but same `cache_key` | Include content hash in cache key or version it manually |
+
+### Slide-Viewer HTML Design
+
+The `slide-viewer.html` component must:
+1. **Full-screen**: No margins, scrollbars, or browser chrome
+2. **Dark background**: Match code-server theme (#0D1117)
+3. **Keyboard navigation**: Arrow keys for manual advance
+4. **Auto-advance mode**: JavaScript interval for automated flow
+5. **Playwright API**: Expose `window.slideViewer` for automation
+
+```javascript
+// Required API for Playwright
+window.slideViewer = {
+    goToSlide: (n) => { ... },
+    next: () => { ... },
+    previous: () => { ... },
+    getCurrentSlide: () => currentSlide,
+    getTotalSlides: () => slideImages.length,
+    startAutoAdvance: () => { ... },
+    stopAutoAdvance: () => { ... }
+};
+```
+
+### Narration Timing for Slides
+
+Slide segments need different timing than code demos:
+
+**Slide segments:**
+- Narration should explain what's on screen
+- Longer pauses (audience needs time to read)
+- Typical: 5-8 seconds per slide minimum
+
+**Demo segments:**
+- Narration describes action
+- Typing provides visual interest
+- Can be faster-paced
+
+**Rule of thumb:**
+```
+slide_duration = slide_count × 6_seconds minimum
+demo_duration = max(narration_duration, typing_duration)
+```
+
+### Assembly Considerations
+
+Mixed segments create video clips with potentially different:
+- Source formats (PNG sequences vs WebM recordings)
+- Frame rates (30fps for both, but verify)
+- Color spaces (sRGB for slides, YUV for video)
+
+**Solution:** Always normalize clips before concat:
+```python
+# Normalize all segments to identical format
+for clip in segment_clips:
+    ffmpeg_normalize(clip, output)  # Same settings for all
+
+# Then stream-copy concat
+ffmpeg_concat(normalized_clips, final_output, codec='copy')
+```
+
+### Workflow Comparison: Steps vs Segments
+
+| Aspect | Traditional Steps | Mixed Segments |
+|---|---|---|
+| JSON key | `steps[]` | `segments[]` |
+| Content types | Demo only | Slides + demo |
+| Recording contexts | 1 per mode | 1 per segment |
+| Assembly | Continuous/independent | Always concatenated |
+| Complexity | Lower | Higher |
+| Use case | Quick tutorials | Comprehensive courses |
+
+### Migration from Steps to Segments
+
+Converting existing `steps`-based spec:
+
+1. Rename `steps` → `segments`
+2. Add `"type": "demo"` to each segment
+3. Add `slides` section at root level
+4. Insert slide segments at appropriate points
+5. Adjust narration to flow between slide/demo
+
+**Backward compatibility:** Pipeline auto-detects format:
+```python
+use_segments = "segments" in spec
+if use_segments:
+    run_mixed_workflow(spec)
+else:
+    run_traditional_workflow(spec)
+```
+
+### Gamma API Integration Lessons
+
+**API Key Management:**
+- Never commit API keys to git
+- Use environment variable: `GAMMA_API_KEY`
+- Fail gracefully: if no key, use PIL placeholders
+
+**Rate Limiting:**
+- Cache aggressively (hash-based)
+- Batch slide generation (one API call per presentation, not per slide)
+- Monitor usage during development
+
+**Content Formatting:**
+Gamma works best with structured markdown-style input:
+```markdown
+# Title
+## Slide 1 Title
+- Bullet point 1
+- Bullet point 2
+
+## Slide 2 Title
+Body text here
+```
+
+Avoid:
+- Raw HTML
+- Very long paragraphs
+- Special characters that might break JSON
+
+### Testing Mixed Workflows
+
+**Fast iteration cycle:**
+1. Use PIL placeholders (no API calls)
+2. Short narration for testing
+3. Skip assembly with `--dry-run`
+4. Once flow is right, switch to Gamma
+
+**Debugging slide issues:**
+```bash
+# Open slide viewer directly
+firefox "file:///path/to/slide-viewer.html?slides=/path/to/slides&count=5"
+
+# Check slide images
+ls -la ~/.cache/gamma-slides/{cache_key}/
+ffprobe slide-001.png  # Verify format
+```
+
+---
+
+> **Document version:** 2025-02-25
+> **Last updated:** Added mixed slides/demo workflow lessons and Gamma API integration
+

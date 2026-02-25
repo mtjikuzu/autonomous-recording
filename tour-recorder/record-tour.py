@@ -1340,40 +1340,494 @@ def main() -> int:
 
         log(f"Work directory: {dirs['base']}")
         log("Phase A: spec loaded and validated")
-        for step in spec["steps"]:
-            log(f"Phase A: step {step['id']} budget {step['time_budget_seconds']:.2f}s")
 
+        # Determine workflow: mixed segments or traditional steps
+        use_segments = "segments" in spec
 
-        run_pre_setup(spec)
+        if use_segments:
+            # New mixed slide/demo workflow
+            log("Phase A: detected segment-based workflow (slides + demos)")
 
-        step_audio = prerender_tts(spec, dirs["audio"], skip_tts=args.skip_tts)
-        mode = str(spec["settings"].get("mode", "independent"))
-        if mode == "continuous":
-            log("Phase C: running in continuous capture mode")
-            results = run_continuous_capture(
-                spec, step_audio, dirs, dry_run=args.dry_run
+            # Generate/prepare slides if configured
+            slides_dir = None
+            if spec.get("slides"):
+                log("Phase A: preparing slides")
+                slides_dir = generate_slides_via_gamma(spec, dirs["base"])
+
+            # Log segments
+            for seg in spec["segments"]:
+                seg_type = seg.get("type", "demo")
+                log(f"Phase A: segment {seg['id']} ({seg_type})")
+
+            run_pre_setup(spec)
+
+            # Prerender TTS for all segments
+            step_audio = prerender_tts_mixed(spec, dirs["audio"], skip_tts=args.skip_tts)
+
+            log("Phase C: running mixed capture (slides + demos)")
+            results = run_mixed_capture(
+                spec, step_audio, dirs, slides_dir, dry_run=args.dry_run
             )
-        else:
-            log("Phase C: running in independent capture mode")
-            results = run_capture_phase(spec, step_audio, dirs, dry_run=args.dry_run)
 
-        final_path: Path | None = None
-        if not args.dry_run:
-            if mode == "continuous":
-                final_path = assemble_continuous_video(spec, results, dirs)
-            else:
-                final_path = assemble_video(spec, results, dirs)
-            # Apply intro/outro overlays if configured
-            if final_path is not None:
-                final_path = apply_overlays(spec, final_path, dirs["assembly"])
+            final_path: Path | None = None
+            if not args.dry_run:
+                final_path = assemble_mixed_video(spec, results, dirs)
+                # Apply intro/outro overlays if configured
+                if final_path is not None:
+                    final_path = apply_overlays(spec, final_path, dirs["assembly"])
         else:
-            log("Dry-run complete: recording and assembly skipped")
+            # Traditional step-based workflow
+            for step in spec["steps"]:
+                log(f"Phase A: step {step['id']} budget {step['time_budget_seconds']:.2f}s")
+
+            run_pre_setup(spec)
+
+            step_audio = prerender_tts(spec, dirs["audio"], skip_tts=args.skip_tts)
+            mode = str(spec["settings"].get("mode", "independent"))
+            if mode == "continuous":
+                log("Phase C: running in continuous capture mode")
+                results = run_continuous_capture(
+                    spec, step_audio, dirs, dry_run=args.dry_run
+                )
+            else:
+                log("Phase C: running in independent capture mode")
+                results = run_capture_phase(spec, step_audio, dirs, dry_run=args.dry_run)
+
+            final_path: Path | None = None
+            if not args.dry_run:
+                if mode == "continuous":
+                    final_path = assemble_continuous_video(spec, results, dirs)
+                else:
+                    final_path = assemble_video(spec, results, dirs)
+                # Apply intro/outro overlays if configured
+                if final_path is not None:
+                    final_path = apply_overlays(spec, final_path, dirs["assembly"])
 
         print_report(spec, results, final_path, started)
         return 0
     except Exception as exc:
         log(f"ERROR: {exc}")
         return 1
+
+
+def generate_slides_via_gamma(spec: dict[str, Any], work_dir: Path) -> Path | None:
+    """Generate or retrieve cached slides via Gamma API."""
+    slides_config = spec.get("slides")
+    if not slides_config or not slides_config.get("generate", False):
+        return None
+
+    cache_key = slides_config.get("cache_key", "default")
+    slides_dir = work_dir / "slides" / cache_key
+
+    # Check if already cached
+    if slides_dir.exists() and any(slides_dir.glob("slide-*.png")):
+        log(f"[Slides] Using cached slides: {slides_dir}")
+        return slides_dir
+
+    slides_dir.mkdir(parents=True, exist_ok=True)
+
+    # Try to use Gamma API if available
+    try:
+        from gamma_client import GammaClient, GammaError
+        client = GammaClient()
+
+        content = slides_config.get("content", [])
+        theme = slides_config.get("theme", "Chisel")
+
+        result_dir = client.generate_presentation(
+            title=spec["meta"]["title"],
+            content=content,
+            theme=theme
+        )
+
+        # Copy generated slides to cache directory
+        for slide_file in result_dir.glob("slide-*.png"):
+            shutil.copy(slide_file, slides_dir / slide_file.name)
+
+        log(f"[Slides] Generated {len(list(slides_dir.glob('slide-*.png')))} slides")
+        return slides_dir
+
+    except Exception as e:
+        log(f"[Slides] Gamma API unavailable ({e}), creating placeholder slides")
+        # Create placeholder text-based slides
+        return create_placeholder_slides(slides_config, slides_dir)
+
+
+def create_placeholder_slides(slides_config: dict, slides_dir: Path) -> Path:
+    """Create placeholder slide images when Gamma API is unavailable."""
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+
+        content = slides_config.get("content", [])
+
+        for i, slide in enumerate(content, 1):
+            # Create 1920x1080 image with dark background
+            img = Image.new('RGB', (1920, 1080), '#0D1117')
+            draw = ImageDraw.Draw(img)
+
+            # Title
+            title = slide.get("title", "Slide")
+            try:
+                font_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 72)
+                font_body = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 48)
+            except:
+                font_title = ImageFont.load_default()
+                font_body = font_title
+
+            # Draw title
+            draw.text((960, 200), title, fill='#F7C948', font=font_title, anchor='mt')
+
+            # Draw bullet points
+            y = 400
+            for point in slide.get("bullet_points", []):
+                draw.text((200, y), f"• {point}", fill='#FFFFFF', font=font_body)
+                y += 80
+
+            # Save
+            num = str(i).zfill(3)
+            img.save(slides_dir / f"slide-{num}.png")
+
+        log(f"[Slides] Created {len(content)} placeholder slides")
+        return slides_dir
+
+    except ImportError:
+        log("[Slides] Pillow not available, cannot create placeholder slides")
+        return slides_dir
+
+
+def record_slide_segment(
+    browser,
+    slides_dir: Path,
+    segment: dict[str, Any],
+    audio_path: Path,
+    work_dir: Path
+) -> Path:
+    """Record a slide segment showing Gamma-generated slides."""
+    slide_range = segment.get("slides", {}).get("range", [1, 1])
+    advance_interval = segment.get("slides", {}).get("advance_interval", 5000)
+
+    # Build slide viewer URL
+    slide_viewer_path = Path(__file__).parent / "slide-viewer.html"
+    slide_count = slide_range[1] - slide_range[0] + 1
+
+    viewer_url = (
+        f"file://{slide_viewer_path.absolute()}?"
+        f"slides={slides_dir.absolute()}&"
+        f"count={slide_count}&"
+        f"interval={advance_interval}"
+    )
+
+    context = browser.new_context(
+        viewport={"width": 1920, "height": 1080},
+        record_video_dir=str(work_dir / "clips"),
+        record_video_size={"width": 1920, "height": 1080}
+    )
+
+    try:
+        page = context.new_page()
+        page.goto(viewer_url)
+        page.wait_for_selector("#slide-image", state="visible", timeout=10000)
+
+        # Navigate to starting slide
+        start_slide = slide_range[0]
+        page.evaluate(f"window.slideViewer.goToSlide({start_slide})")
+
+        # Start auto-advance
+        page.evaluate("window.slideViewer.startAutoAdvance()")
+
+        # Wait for audio duration + padding
+        import soundfile as sf
+        audio_duration, _ = sf.read(audio_path)
+        duration = len(audio_duration) / sf.info(audio_path).samplerate
+
+        page.wait_for_timeout(int(duration * 1000) + 1000)
+
+        context.close()
+
+        # Get video path
+        video_path = page.video.path()
+        return Path(video_path)
+
+    except Exception as e:
+        context.close()
+        raise TourError(f"Slide segment recording failed: {e}")
+
+
+def run_mixed_capture(
+    spec: dict[str, Any],
+    step_audio: dict[str, Path],
+    dirs: dict[str, Path],
+    slides_dir: Path | None,
+    dry_run: bool = False
+) -> list[StepResult]:
+    """Run mixed slide/demo capture for segment-based specs."""
+    if dry_run:
+        return []
+
+    results: list[StepResult] = []
+    segments = spec.get("segments", spec.get("steps", []))
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+
+        try:
+            for idx, segment in enumerate(segments, 1):
+                seg_id = segment.get("id", f"segment-{idx}")
+                seg_type = segment.get("type", "demo")
+                audio_path = step_audio.get(seg_id)
+
+                if not audio_path or not audio_path.exists():
+                    log(f"Segment {seg_id}: missing audio, skipping")
+                    continue
+
+                log(f"Segment {idx}/{len(segments)}: {seg_id} ({seg_type})")
+
+                try:
+                    if seg_type == "slides" and slides_dir:
+                        clip_path = record_slide_segment(
+                            browser, slides_dir, segment, audio_path, dirs["base"]
+                        )
+                    else:
+                        # Demo segment - use existing capture logic
+                        clip_path = record_demo_segment(
+                            browser, segment, audio_path, dirs
+                        )
+
+                    results.append(StepResult(
+                        step_id=seg_id,
+                        attempt_count=1,
+                        success=True,
+                        clip_path=clip_path,
+                        audio_path=audio_path,
+                        audio_duration=0.0,
+                        step_elapsed=0.0
+                    ))
+
+                except Exception as e:
+                    log(f"Segment {seg_id} failed: {e}")
+                    results.append(StepResult(
+                        step_id=seg_id,
+                        attempt_count=1,
+                        success=False,
+                        clip_path=None,
+                        audio_path=audio_path,
+                        audio_duration=0.0,
+                        step_elapsed=0.0
+                    ))
+
+        finally:
+            browser.close()
+
+    return results
+
+
+def record_demo_segment(
+    browser,
+    segment: dict[str, Any],
+    audio_path: Path,
+    dirs: dict[str, Path]
+) -> Path:
+    """Record a demo segment (existing code-server capture logic)."""
+    # Reuse existing continuous capture logic for a single segment
+    # This is a simplified version - full implementation would reuse
+    # the existing run_continuous_capture logic
+
+    url = segment.get("url", "http://127.0.0.1:8080")
+    actions = segment.get("actions", [])
+
+    context = browser.new_context(
+        viewport={"width": 1920, "height": 1080},
+        record_video_dir=str(dirs["clips"]),
+        record_video_size={"width": 1920, "height": 1080}
+    )
+
+    try:
+        page = context.new_page()
+        page.goto(url, wait_until="domcontentloaded", timeout=30000)
+
+        # Run actions
+        for action in actions:
+            run_action(page, action)
+
+        # Wait for audio to finish
+        import soundfile as sf
+        audio_duration, _ = sf.read(audio_path)
+        duration = len(audio_duration) / sf.info(audio_path).samplerate
+        page.wait_for_timeout(int(duration * 1000))
+
+        context.close()
+
+        video_path = page.video.path()
+        return Path(video_path)
+
+    except Exception as e:
+        context.close()
+        raise TourError(f"Demo segment recording failed: {e}")
+
+
+def run_action(page, action: dict[str, Any]) -> None:
+    """Execute a single action on the page."""
+    action_type = action.get("type", "pause")
+
+    if action_type == "pause":
+        page.wait_for_timeout(int(action.get("duration", 1.0) * 1000))
+    elif action_type == "wait_for_load":
+        try:
+            page.wait_for_load_state("networkidle", timeout=15000)
+        except:
+            page.wait_for_timeout(3000)
+    elif action_type == "wait_for_selector":
+        page.wait_for_selector(
+            action["selector"],
+            state=action.get("state", "visible"),
+            timeout=action.get("timeout", 10000)
+        )
+    elif action_type == "press_key":
+        page.keyboard.press(action["key"])
+        page.wait_for_timeout(300)
+    elif action_type == "type_text":
+        page.keyboard.type(action["text"], delay=action.get("delay", 40))
+    elif action_type == "focus_editor":
+        page.locator(".monaco-editor .view-lines").first.click()
+    elif action_type == "select_all_and_delete":
+        page.keyboard.press("Control+a")
+        page.wait_for_timeout(200)
+        page.keyboard.press("Delete")
+    elif action_type == "command_palette":
+        page.keyboard.press("Control+Shift+p")
+        page.wait_for_timeout(800)
+        page.keyboard.type(action["command"], delay=40)
+        page.wait_for_timeout(500)
+        page.keyboard.press("Enter")
+    elif action_type == "terminal_type":
+        page.evaluate("""() => {
+            const active = document.querySelector('.terminal-wrapper.active');
+            if (active) {
+                const ta = active.querySelector('textarea.xterm-helper-textarea');
+                if (ta) ta.focus();
+            }
+        }""")
+        page.wait_for_timeout(300)
+        page.keyboard.type(action["text"])
+        if action.get("press_enter", False):
+            page.keyboard.press("Enter")
+    elif action_type == "dismiss_popups":
+        for selector in POPUP_SELECTORS:
+            try:
+                page.locator(selector).first.click(timeout=1000)
+                page.wait_for_timeout(500)
+            except:
+                pass
+    elif action_type == "hide_secondary_sidebar":
+        page.evaluate("""() => {
+            const aux = document.querySelector('.auxiliarybar');
+            if (aux) {
+                aux.remove();
+                window.dispatchEvent(new Event('resize'));
+            }
+        }""")
+
+
+def prerender_tts_mixed(
+    spec: dict[str, Any], audio_dir: Path, skip_tts: bool = False
+) -> dict[str, Path]:
+    """Prerender TTS audio for segment-based specs."""
+    segments = spec.get("segments", [])
+    audio_paths: dict[str, Path] = {}
+
+    voice = spec["settings"].get("voice", "am_michael")
+    speed = float(spec["settings"].get("speech_speed", 1.0))
+
+    kokoro = Kokoro(KOKORO_MODEL, KOKORO_VOICES)
+
+    for segment in segments:
+        seg_id = segment["id"]
+        narration = segment.get("narration", "")
+
+        if not narration:
+            log(f"Phase B: segment {seg_id} has no narration")
+            continue
+
+        output_path = audio_dir / f"segment-{seg_id}.wav"
+
+        if skip_tts and output_path.exists():
+            log(f"Phase B: reusing segment-{seg_id}.wav")
+        else:
+            log(f"Phase B: generating TTS for segment {seg_id}")
+            try:
+                samples, sample_rate = kokoro.create(
+                    narration, voice=voice, speed=speed, lang="en-us"
+                )
+                sf.write(output_path, samples, sample_rate)
+                log(f"Phase B: saved {output_path.name}")
+            except Exception as exc:
+                raise TourError(f"TTS failed for segment {seg_id}: {exc}") from exc
+
+        audio_paths[seg_id] = output_path
+
+    return audio_paths
+
+
+def assemble_mixed_video(
+    spec: dict[str, Any],
+    results: list[StepResult],
+    dirs: dict[str, Path]
+) -> Path:
+    """Assemble mixed slide/demo segments into final video."""
+    log("Phase D: assembling mixed segment video")
+
+    if not results:
+        raise TourError("No segments to assemble")
+
+    assembly_dir = dirs["assembly"]
+
+    # Normalize all segment clips
+    normalized_clips: list[Path] = []
+    for i, result in enumerate(results):
+        if not result.success or not result.clip_path:
+            log(f"Phase D: skipping failed segment {result.step_id}")
+            continue
+
+        normalized = assembly_dir / f"segment-{i:03d}-normalized.mp4"
+        transcode_step_clip(result.clip_path, normalized)
+        normalized_clips.append(normalized)
+
+    if not normalized_clips:
+        raise TourError("No successful segments to assemble")
+
+    # Concatenate all segments
+    concat_list = assembly_dir / "mixed-concat.txt"
+    with concat_list.open("w", encoding="utf-8") as f:
+        for clip in normalized_clips:
+            f.write(f"file '{clip.as_posix()}'\n")
+
+    final_path = Path(os.path.expanduser(str(spec["output"]["path"]))).resolve()
+    final_path.parent.mkdir(parents=True, exist_ok=True)
+
+    cmd = [
+        FFMPEG_BIN,
+        "-y",
+        "-f", "concat",
+        "-safe", "0",
+        "-i", str(concat_list),
+        "-c:v", "libx264",
+        "-preset", "medium",
+        "-crf", "20",
+        "-ac", "1",
+        "-c:a", "aac",
+        "-b:a", "192k",
+        "-movflags", "+faststart",
+        str(final_path),
+    ]
+
+    run_cmd(cmd, "Assemble mixed segment video")
+
+    # Cleanup
+    for clip in normalized_clips:
+        clip.unlink(missing_ok=True)
+
+    log(f"Phase D: final video assembled ({ffprobe_duration(final_path):.2f}s)")
+    return final_path
 
 
 if __name__ == "__main__":

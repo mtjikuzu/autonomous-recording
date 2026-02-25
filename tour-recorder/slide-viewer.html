@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            width: 100vw;
+            height: 100vh;
+            background: #0D1117;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        #slide-container {
+            width: 1920px;
+            height: 1080px;
+            background: #0D1117;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        
+        #slide-image {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        
+        #slide-text {
+            color: #FFFFFF;
+            font-size: 48px;
+            text-align: center;
+            padding: 40px;
+            display: none;
+        }
+        
+        #controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(13, 17, 23, 0.9);
+            padding: 10px 20px;
+            border-radius: 8px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        #controls button {
+            background: #238636;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        #controls button:hover {
+            background: #2ea043;
+        }
+        
+        #slide-info {
+            color: #8B949E;
+            font-size: 14px;
+            min-width: 80px;
+            text-align: center;
+        }
+        
+        .loading {
+            color: #8B949E;
+            font-size: 24px;
+        }
+        
+        /* Hide controls when presenting */
+        .presenting #controls {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="slide-container">
+        <img id="slide-image" src="" alt="Slide">
+        <div id="slide-text"></div>
+        <div id="loading" class="loading">Loading slides...</div>
+    </div>
+    
+    <div id="controls">
+        <button onclick="previousSlide()">← Previous</button>
+        <span id="slide-info">0 / 0</span>
+        <button onclick="nextSlide()">Next →</button>
+        <button onclick="togglePresent()">Present</button>
+    </div>
+
+    <script>
+        // Parse URL parameters
+        const params = new URLSearchParams(window.location.search);
+        const slidesPath = params.get('slides');
+        const totalSlides = parseInt(params.get('count') || '0');
+        const autoAdvance = params.get('auto') === 'true';
+        const advanceInterval = parseInt(params.get('interval') || '5000');
+        
+        let currentSlide = 1;
+        let slideImages = [];
+        let autoAdvanceTimer = null;
+        
+        function loadSlides() {
+            if (!slidesPath) {
+                showError('No slides path provided');
+                return;
+            }
+            
+            // Generate slide URLs
+            for (let i = 1; i <= totalSlides; i++) {
+                const num = i.toString().padStart(3, '0');
+                slideImages.push(`${slidesPath}/slide-${num}.png`);
+            }
+            
+            document.getElementById('loading').style.display = 'none';
+            
+            if (slideImages.length > 0) {
+                showSlide(1);
+            } else {
+                showError('No slides found');
+            }
+        }
+        
+        function showSlide(n) {
+            if (n < 1 || n > slideImages.length) return;
+            
+            currentSlide = n;
+            const img = document.getElementById('slide-image');
+            img.src = slideImages[n - 1];
+            
+            updateInfo();
+            
+            // Notify parent window (for Playwright automation)
+            window.slideChanged = n;
+            if (window.onSlideChange) {
+                window.onSlideChange(n);
+            }
+        }
+        
+        function nextSlide() {
+            if (currentSlide < slideImages.length) {
+                showSlide(currentSlide + 1);
+            }
+        }
+        
+        function previousSlide() {
+            if (currentSlide > 1) {
+                showSlide(currentSlide - 1);
+            }
+        }
+        
+        function updateInfo() {
+            document.getElementById('slide-info').textContent = 
+                `${currentSlide} / ${slideImages.length}`;
+        }
+        
+        function showError(message) {
+            document.getElementById('loading').textContent = `Error: ${message}`;
+            document.getElementById('loading').style.color = '#FF7B72';
+        }
+        
+        function togglePresent() {
+            document.body.classList.toggle('presenting');
+        }
+        
+        function startAutoAdvance() {
+            if (autoAdvanceTimer) clearInterval(autoAdvanceTimer);
+            autoAdvanceTimer = setInterval(() => {
+                if (currentSlide < slideImages.length) {
+                    nextSlide();
+                } else {
+                    clearInterval(autoAdvanceTimer);
+                }
+            }, advanceInterval);
+        }
+        
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === ' ') {
+                e.preventDefault();
+                nextSlide();
+            } else if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                previousSlide();
+            } else if (e.key === 'Escape') {
+                document.body.classList.remove('presenting');
+            }
+        });
+        
+        // Initialize
+        loadSlides();
+        
+        if (autoAdvance && slideImages.length > 0) {
+            startAutoAdvance();
+        }
+        
+        // Expose API for Playwright automation
+        window.slideViewer = {
+            goToSlide: showSlide,
+            next: nextSlide,
+            previous: previousSlide,
+            getCurrentSlide: () => currentSlide,
+            getTotalSlides: () => slideImages.length,
+            startAutoAdvance,
+            stopAutoAdvance: () => {
+                if (autoAdvanceTimer) clearInterval(autoAdvanceTimer);
+            }
+        };
+    </script>
+</body>
+</html>
