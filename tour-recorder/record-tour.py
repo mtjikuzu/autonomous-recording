@@ -940,6 +940,128 @@ def transcode_step_clip(webm_path: Path, output_mp4_path: Path) -> None:
     run_cmd(cmd, f"Normalize clip {webm_path.name}")
 
 
+def normalize_overlay_clip(input_path: Path, output_path: Path) -> None:
+    """Normalize an intro/outro MP4 overlay to match the recording format.
+    
+    Overlays are pre-rendered by Remotion at 1920x1080. We normalize to ensure
+    consistent codec, framerate, and pixel format for ffmpeg concat.
+    Silent audio track is added so concat works with audio-containing main video.
+    """
+    cmd = [
+        FFMPEG_BIN,
+        "-y",
+        "-i",
+        str(input_path),
+        "-f",
+        "lavfi",
+        "-i",
+        "anullsrc=r=24000:cl=mono",
+        "-vf",
+        "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "medium",
+        "-crf",
+        "20",
+        "-ac",
+        "1",
+        "-ar",
+        "24000",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-shortest",
+        "-movflags",
+        "+faststart",
+        str(output_path),
+    ]
+    run_cmd(cmd, f"Normalize overlay {input_path.name}")
+
+
+def apply_overlays(
+    spec: dict[str, Any],
+    main_video: Path,
+    assembly_dir: Path,
+) -> Path:
+    """Prepend intro and/or append outro overlay clips to the main video.
+    
+    Reads intro_clip and outro_clip paths from spec['output'].
+    If neither is set, returns main_video unchanged.
+    """
+    intro_raw = spec["output"].get("intro_clip")
+    outro_raw = spec["output"].get("outro_clip")
+
+    if not intro_raw and not outro_raw:
+        return main_video
+
+    clips_to_concat: list[Path] = []
+
+    if intro_raw:
+        intro_path = Path(os.path.expanduser(str(intro_raw))).resolve()
+        if not intro_path.exists():
+            raise TourError(f"Intro overlay clip not found: {intro_path}")
+        intro_normalized = assembly_dir / "intro-normalized.mp4"
+        normalize_overlay_clip(intro_path, intro_normalized)
+        clips_to_concat.append(intro_normalized)
+        log(f"Phase D: intro overlay added ({ffprobe_duration(intro_normalized):.2f}s)")
+
+    # Normalize main video to match overlay format for reliable concat
+    main_normalized = assembly_dir / "main-for-concat.mp4"
+    cmd_norm = [
+        FFMPEG_BIN, "-y", "-i", str(main_video),
+        "-vf", "fps=30,format=yuv420p",
+        "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+        "-ac", "1", "-ar", "24000",
+        "-c:a", "aac", "-b:a", "192k",
+        "-movflags", "+faststart",
+        str(main_normalized),
+    ]
+    run_cmd(cmd_norm, "Normalize main video for overlay concat")
+    clips_to_concat.append(main_normalized)
+
+    if outro_raw:
+        outro_path = Path(os.path.expanduser(str(outro_raw))).resolve()
+        if not outro_path.exists():
+            raise TourError(f"Outro overlay clip not found: {outro_path}")
+        outro_normalized = assembly_dir / "outro-normalized.mp4"
+        normalize_overlay_clip(outro_path, outro_normalized)
+        clips_to_concat.append(outro_normalized)
+        log(f"Phase D: outro overlay added ({ffprobe_duration(outro_normalized):.2f}s)")
+
+    if len(clips_to_concat) == 1:
+        return main_video
+
+    concat_list = assembly_dir / "overlay-concat.txt"
+    with concat_list.open("w", encoding="utf-8") as handle:
+        for clip in clips_to_concat:
+            handle.write(f"file '{clip.as_posix()}'\n")
+
+    final_with_overlays = main_video.parent / f"{main_video.stem}-with-overlays{main_video.suffix}"
+    cmd = [
+        FFMPEG_BIN,
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        str(concat_list),
+        "-c",
+        "copy",
+        "-movflags",
+        "+faststart",
+        str(final_with_overlays),
+    ]
+    run_cmd(cmd, "Concatenate overlays with main video")
+
+    # Replace the original output with the overlay version
+    os.replace(final_with_overlays, main_video)
+    log(f"Phase D: final video with overlays ({ffprobe_duration(main_video):.2f}s)")
+    return main_video
+
+
 def mux_audio_with_offset(
     video_mp4: Path, audio_wav: Path, output_mp4: Path, audio_duration: float
 ) -> None:
@@ -1127,6 +1249,7 @@ def assemble_continuous_video(
             "192k",
             "-movflags",
             "+faststart",
+            "-shortest",
             "-t",
             f"{float(spec['meta']['max_duration_seconds']):.3f}",
             str(final_path),
@@ -1240,6 +1363,9 @@ def main() -> int:
                 final_path = assemble_continuous_video(spec, results, dirs)
             else:
                 final_path = assemble_video(spec, results, dirs)
+            # Apply intro/outro overlays if configured
+            if final_path is not None:
+                final_path = apply_overlays(spec, final_path, dirs["assembly"])
         else:
             log("Dry-run complete: recording and assembly skipped")
 

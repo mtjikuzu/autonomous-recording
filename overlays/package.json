@@ -1,0 +1,23 @@
+{
+  "name": "tutorial-overlays",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npx remotion studio",
+    "build": "npx remotion bundle",
+    "render:intro": "npx remotion render BubbleSortIntro out/bubblesort-intro.mp4",
+    "render:outro": "npx remotion render BubbleSortOutro out/bubblesort-outro.mp4",
+    "render:all": "npm run render:intro && npm run render:outro"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.296",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "remotion": "4.0.296"
+  },
+  "devDependencies": {
+    "@remotion/eslint-config": "4.0.296",
+    "@types/react": "^19.1.0",
+    "typescript": "^5.8.0"
+  }
+}

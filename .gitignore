@@ -30,3 +30,5 @@ Thumbs.db
 
 # Java compiled
 workspaces/**/*.class
+overlays/node_modules/
+overlays/out/

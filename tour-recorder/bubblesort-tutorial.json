@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Java Bubble Sort Tutorial in VS Code",
+    "title": "Java Bubble Sort Tutorial",
     "description": "Guided coding walkthrough that builds, compiles, and runs BubbleSort.java in code-server",
     "target_duration_seconds": 360,
     "max_duration_seconds": 480
@@ -25,7 +25,7 @@
     {
       "id": "open-workspace",
       "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial",
-      "narration": "Hey everyone, welcome back. Today we are going to write one of the most classic sorting algorithms from scratch, bubble sort, in Java. Now, if you have ever shuffled a deck of cards by just swapping neighbors that are out of order, congratulations, you already understand the core idea behind bubble sort. It is not the fastest algorithm out there, but it is a fantastic starting point because the logic maps so cleanly to what you would do by hand. Let us jump into VS Code and start coding.",
+      "narration": "Hey everyone, welcome back. Today we are going to write one of the most classic sorting algorithms from scratch, bubble sort, in Java. Now, if you have ever shuffled a deck of cards by just swapping neighbors that are out of order, congratulations, you already understand the core idea behind bubble sort. It is not the fastest algorithm out there, but it is a fantastic starting point because the logic maps so cleanly to what you would do by hand. Let us get started.",
       "actions": [
         { "type": "wait_for_load" },
         { "type": "wait_for_selector", "selector": ".monaco-workbench", "state": "visible", "timeout": 30000 },
@@ -50,7 +50,7 @@
     {
       "id": "create-file",
       "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial",
-      "narration": "Alright, first things first. I will open our file using Quick Open, that is Control P. This is one of those keyboard shortcuts you absolutely want to memorize. In a real project with hundreds of files, Quick Open is way faster than clicking through the sidebar. We will open BubbleSort dot java.",
+      "narration": "Alright, first things first. We need to open up BubbleSort dot java. In Java, every public class lives in its own file, and the file name has to match the class name exactly. So this is where we will write everything.",
       "actions": [
         { "type": "press_key", "key": "Escape" },
         { "type": "pause", "duration": 0.3 },
@@ -117,7 +117,7 @@
     {
       "id": "save-file",
       "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial",
-      "narration": "Quick habit check. Always save before you compile. I cannot tell you how many times students come to me saying their code does not work, and it turns out they just forgot to save. Control S, takes half a second, saves you five minutes of confusion.",
+      "narration": "Quick save before we compile. Always save before running the compiler. It takes half a second and saves you five minutes of confusion tracking down a bug that does not actually exist in your code.",
       "actions": [
         { "type": "focus_editor" },
         { "type": "press_key", "key": "Control+s" },
@@ -127,7 +127,7 @@
     {
       "id": "open-terminal-and-compile",
       "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial",
-      "narration": "Let us open up the integrated terminal. One of the things I love about VS Code is you do not have to leave the editor to compile and run. We will use javac, the Java compiler. If javac finishes without printing anything, that is actually good news. Silence means no errors. Behind the scenes, it generates a dot class file containing bytecode that the Java Virtual Machine can execute.",
+      "narration": "Time to compile. We will use javac, the Java compiler. If javac finishes without printing anything, that is actually good news. Silence means no errors. Behind the scenes, it generates a dot class file containing bytecode that the Java Virtual Machine can execute.",
       "actions": [
         { "type": "command_palette", "command": "Terminal: Create New Terminal" },
         { "type": "pause", "duration": 3.0 },
@@ -163,6 +163,8 @@
     "video_crf": 20,
     "audio_codec": "aac",
     "audio_bitrate": "192k",
-    "loudnorm": true
+    "loudnorm": true,
+    "intro_clip": "~/dev/autonomous-recording/overlays/out/bubblesort-intro.mp4",
+    "outro_clip": "~/dev/autonomous-recording/overlays/out/bubblesort-outro.mp4"
   }
 }
