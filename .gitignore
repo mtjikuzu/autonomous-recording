@@ -11,8 +11,10 @@ build/
 venv/
 env/
 
-# Output videos (large files - optional, comment out if you want to track them)
+# Output videos — exclude all except the two published tutorials
 output/*.mp4
+!output/bubblesort-tutorial.mp4
+!output/functions-tutorial.mp4
 
 # Temp / uploads
 /tmp/
