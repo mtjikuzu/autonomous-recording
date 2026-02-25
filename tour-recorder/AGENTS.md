@@ -70,3 +70,84 @@ Must disable: trust dialog, welcome tab, auto-indent, auto-close brackets, forma
 3. **`networkidle` hangs on some sites** — Always wrap in try/except with timeout fallback.
 4. **Multiple textareas exist** — `textarea.xterm-helper-textarea` appears multiple times (one per terminal tab). `textarea.ime-text-area` belongs to the EDITOR, not the terminal. Always scope to `.terminal-wrapper.active`.
 5. **Copilot chat panel reappears** — Must hide it AFTER opening files, not just at startup.
+
+## Remotion Intro/Outro Overlays (New)
+
+> Integration of Remotion motion graphics with the Playwright recording pipeline.
+
+### How It Works
+
+1. **Remotion Project** (`overlays/`): TypeScript/React scenes rendered to MP4 clips
+   - `src/scenes/BubbleSortIntro.tsx`: 4s animated intro with branding
+   - `src/scenes/BubbleSortOutro.tsx`: 5s outro with topic summary
+   - Render: `cd overlays && npm run render:intro` / `npm run render:outro`
+
+2. **Pipeline Integration** (`record-tour.py`):
+   - `normalize_overlay_clip()`: Converts Remotion MP4 to consistent format (h264, 24kHz mono AAC)
+   - `apply_overlays()`: Normalizes main video, then concatenates intro + main + outro with stream copy
+   - Spec fields: `output.intro_clip` and `output.outro_clip` paths
+
+3. **Assembly Flow**:
+   ```
+   TTS → Recording → assemble_continuous_video() → apply_overlays() → Final MP4
+                                                        ↓
+                                               [intro][main][outro]
+   ```
+
+### Critical Requirements
+
+| Requirement | Why |
+|---|---|
+| All clips must have **identical** audio format | FFmpeg concat demuxer fails with mismatched sample rates/channels |
+| Use `-shortest` in assembly | Prevents audio stream from exceeding video duration |
+| Normalize main video too, not just overlays | Main video from assembly may have different format than overlays |
+| Stream copy (`-c copy`) for concat | Fast, lossless, but requires format matching |
+| Use `os.replace()` not `shutil.move()` | Atomic rename prevents partial files on interrupt |
+
+### Adding Overlays to a Spec
+
+```json
+{
+  "output": {
+    "path": "~/output/tutorial.mp4",
+    "intro_clip": "~/overlays/out/tutorial-intro.mp4",
+    "outro_clip": "~/overlays/out/tutorial-outro.mp4"
+  }
+}
+```
+
+Omit `intro_clip`/`outro_clip` for backward compatibility (no overlays applied).
+
+### Common Overlay Issues
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Outro doesn't appear | Main video not normalized; format mismatch | Ensure `apply_overlays()` normalizes main video |
+| Audio/video desync | `-shortest` missing or concat format mismatch | Add `-shortest` to assembly; verify all clips have same sample rate |
+| Video truncated | `amix=duration=longest` produces longer audio than video | Use `-shortest` flag |
+| Black frames at boundaries | Remotion scenes need consistent backgrounds | Ensure scenes fill 1920x1080 and have explicit background colors |
+
+### Rendering Overlays
+
+```bash
+cd overlays/
+npm install  # First time only
+
+# Render individual clips
+npm run render:intro   # → out/bubblesort-intro.mp4
+npm run render:outro   # → out/bubblesort-outro.mp4
+
+# Render both
+npm run render:all
+```
+
+### Design Guidelines
+
+Match existing thumbnail aesthetic:
+- Background: `#0D1117` (dark)
+- Panel BG: `#161B22`
+- Accent: `#F7C948` (gold)
+- White: `#FFFFFF`
+- Code colors: Keywords `#FF7B72`, Values `#79C0FF`
+- Font: JetBrains Mono
+

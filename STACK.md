@@ -82,6 +82,28 @@ TTS is **pre-rendered** before recording begins. Each step's narration is conver
 - Video codec: `libx264`, preset `medium`, CRF `20`
 - Audio codec: `aac`, bitrate `192k`
 - Loudness normalization: enabled (`loudnorm` filter)
+
+### Motion Graphics (Overlays)
+
+| Component | Version | Role |
+|---|---|---|
+| Remotion | 4.0.296 | React-based motion graphics for intro/outro animations |
+| Node.js | 23.9.0 | Remotion runtime |
+| TypeScript | 5.7.3 | Scene definitions |
+
+**Overlay pipeline:**
+```
+Remotion Scene (TypeScript/React) → Remotion CLI → MP4 overlay clip
+                                    ↓
+                        [Intro clip] + [Main video] + [Outro clip] → FFmpeg concat → Final MP4
+```
+
+**Overlay specs:**
+- Intro: 4 seconds, 30fps, 1920×1080
+- Outro: 5 seconds, 30fps, 1920×1080
+- Branding: Matches thumbnail aesthetic (`#0D1117` bg, `#F7C948` accent)
+
+**Project location:** `overlays/` — TypeScript React scenes rendered to MP4
 - Resolution: `1920×1080`
 
 ### Code Editor (Tutorial Subject)
@@ -136,3 +158,4 @@ Each spec contains:
 | `continuous` mode | Code typed in step N is still visible in step N+1 |
 | code-server (not desktop VS Code) | Playwright can automate a browser; can't automate a native app |
 | JSON spec-driven | Fully reproducible — re-run produces identical video |
+| Remotion for intro/outro | Complements Playwright (handles motion graphics, not screen recording) |

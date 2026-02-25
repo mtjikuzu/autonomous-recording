@@ -17,7 +17,8 @@
 9. [Code-Server Settings Reference](#9-code-server-settings-reference)
 10. [JSON Spec Authoring Tips](#10-json-spec-authoring-tips)
 11. [Narration and Duration](#11-narration-and-duration)
-
+12. [FFmpeg Overlay Concatenation](#12-ffmpeg-overlay-concatenation)
+13. [Remotion Integration](#13-remotion-integration)
 ---
 
 ## 1. Terminal Interaction
@@ -416,3 +417,187 @@ Run shell commands before recording starts. Use for:
 ```
 
 Available Kokoro voices: `am_michael`, `af_heart`, `af_bella`, etc. See Kokoro ONNX docs for full list.
+
+
+---
+
+
+## 12. FFmpeg Overlay Concatenation
+
+> Hard-won lessons about concatenating intro/outro overlays with main video content. **Read this before modifying `apply_overlays()`.**
+
+### Problem: FFmpeg concat demuxer produces corrupt output with mismatched audio formats
+
+When concatenating clips with the FFmpeg concat demuxer (`-f concat -i list.txt`), if the input files have different audio sample rates, channel layouts, or codecs, the output will have:
+- Truncated video (e.g., 84s instead of 384s)
+- Audio/video stream duration mismatch
+- Missing segments (outro doesn't appear)
+
+### What DOESN'T work
+
+| Approach | Why it fails |
+|---|---|
+| Concat without re-encoding mismatched formats | Concat demuxer requires identical stream parameters; different sample rates (48kHz vs 96kHz) or channels (stereo vs mono) cause corruption |
+| Re-encoding only overlay clips | Main video from `assemble_continuous_video()` may have different format (96kHz from AAC encoder vs 24kHz in overlays) |
+| Using `-c:a aac` without explicit `-ar` and `-ac` | AAC encoder auto-selects sample rate (often 48kHz or 96kHz), ignoring the `anullsrc` input rate |
+| `shutil.move()` to replace output file | Non-atomic; partial file on interrupt. Use `os.replace()` instead |
+
+### What WORKS
+
+**Normalize ALL clips to identical format before concat:**
+
+```python
+# Normalize overlays (already done)
+normalize_overlay_clip(intro_source, intro_normalized)  # → 24kHz mono AAC
+normalize_overlay_clip(outro_source, outro_normalized)  # → 24kHz mono AAC
+
+# ALSO normalize the main video
+ffmpeg -i main_video.mp4 \
+    -vf "fps=30,format=yuv420p" \
+    -c:v libx264 -preset medium -crf 20 \
+    -ac 1 -ar 24000 -c:a aac -b:a 192k \
+    -movflags +faststart \
+    main_normalized.mp4
+
+# Concat with stream copy (fast, lossless)
+ffmpeg -f concat -safe 0 -i concat_list.txt \
+    -c copy -movflags +faststart \
+    final_with_overlays.mp4
+```
+
+### Key Requirements
+
+All clips MUST have identical:
+- Video codec: h264 (High profile)
+- Resolution: 1920x1080
+- Framerate: 30 fps
+- Pixel format: yuv420p
+- Audio codec: AAC (LC)
+- Sample rate: 24000 Hz (or any fixed rate, but MUST match)
+- Channels: 1 (mono)
+
+### Verification
+
+```bash
+# Check formats match before concat
+for f in intro.mp4 main.mp4 outro.mp4; do
+    ffprobe -v quiet \
+        -show_entries stream=codec_name,sample_rate,channels,width,height,r_frame_rate \
+        -of compact "$f"
+done
+
+# After concat, verify stream alignment
+ffprobe -v quiet -show_entries stream=duration -of csv final.mp4
+# Should show video and audio durations matching within ~0.1s
+```
+
+### Audio/Video Duration Mismatch Fix
+
+If audio stream is longer than video (e.g., from `amix=duration=longest` filter), add `-shortest` to the FFmpeg command:
+
+```python
+cmd = [
+    "ffmpeg", "-y",
+    "-i", video_input,
+    "-i", audio_input,
+    "-c:v", "libx264",
+    "-c:a", "aac",
+    "-shortest",  # ← Stop when shortest stream ends
+    output_path
+]
+```
+
+
+---
+
+
+## 13. Remotion Integration
+
+> Lessons from integrating Remotion motion graphics with the autonomous recording pipeline.
+
+### Project Structure
+
+```
+overlays/
+├── package.json          # Remotion dependencies and render scripts
+├── tsconfig.json         # TypeScript config
+├── remotion.config.ts    # Remotion CLI settings
+├── src/
+│   ├── index.ts          # Entry point
+│   ├── Root.tsx          # Composition definitions (duration, fps, dimensions)
+│   └── scenes/
+│       ├── BubbleSortIntro.tsx   # 4s intro scene
+│       └── BubbleSortOutro.tsx   # 5s outro scene
+└── out/                  # Rendered MP4 outputs (gitignored)
+```
+
+### Creating New Overlays
+
+1. **Create scene file** in `src/scenes/MyScene.tsx`:
+   - Use Remotion components: `AbsoluteFill`, `spring`, `interpolate`
+   - Set explicit background color (e.g., `backgroundColor: '#0D1117'`)
+   - Animation duration must match composition duration exactly
+
+2. **Register in Root.tsx**:
+   ```typescript
+   export const RemotionRoot: React.FC = () => {
+       return (
+           <>
+               <Composition
+                   id="MyIntro"
+                   component={MyIntro}
+                   durationInFrames={4 * 30}  // 4 seconds at 30fps
+                   fps={30}
+                   width={1920}
+                   height={1080}
+               />
+           </>
+       );
+   };
+   ```
+
+3. **Add render script** to `package.json`:
+   ```json
+   "scripts": {
+       "render:myintro": "remotion render src/index.ts MyIntro out/myintro.mp4"
+   }
+   ```
+
+### Branding Consistency
+
+Match the existing thumbnail aesthetic used in `generate-thumbnails.py`:
+
+| Element | Color | Usage |
+|---|---|---|
+| Background | `#0D1117` | Scene background |
+| Panel BG | `#161B22` | Code panels, cards |
+| Accent | `#F7C948` | Highlights, badges, CTA |
+| White | `#FFFFFF` | Primary text |
+| Keyword | `#FF7B72` | Code syntax (keywords) |
+| Value | `#79C0FF` | Code syntax (values) |
+| Font | JetBrains Mono | All text |
+
+### Common Remotion Pitfalls
+
+| Issue | Solution |
+|---|---|
+| Scene renders black | Ensure `AbsoluteFill` has explicit `backgroundColor` style |
+| Animation timing off | Check `durationInFrames` matches actual animation length |
+| Text blurry at edges | Use `transform: translate()` with `interpolate()` instead of direct x/y |
+| Chrome not found | Remotion auto-downloads Chrome on first render; ensure network access |
+
+### Pipeline Integration Checklist
+
+Before running `record-tour.py` with overlays:
+
+- [ ] Overlay MP4s rendered to `overlays/out/`
+- [ ] All overlays have matching duration (check with `ffprobe`)
+- [ ] Spec has `output.intro_clip` and/or `output.outro_clip` paths set
+- [ ] Paths in spec use `~` (home) or absolute paths (not relative)
+- [ ] `.gitignore` includes `overlays/node_modules/` and `overlays/out/`
+
+
+---
+
+> **Document version:** 2025-02-25
+> **Last updated:** Added Remotion overlay lessons and FFmpeg concat troubleshooting
