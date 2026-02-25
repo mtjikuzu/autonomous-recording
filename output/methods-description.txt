@@ -1,0 +1,43 @@
+Master Java methods in one video — void methods, parameters, return types, overloading, and recursion. We build, compile, and run a complete MethodsDemo.java program in VS Code from scratch.
+
+Methods are the single most important building block in Java (and every other language). This tutorial walks you through five core concepts in one session: writing a void method, adding parameters, returning values, method overloading, and recursive methods — all in a single runnable Java file.
+
+📌 What you will learn:
+• Void methods — performing an action without returning anything
+• Parameters — making methods flexible and reusable
+• Return types — int, double, and when to use them
+• Method overloading — same name, different parameters (Java picks the right one)
+• Recursion — a method that calls itself, with a base case to stop it
+• Compiling and running multi-method Java programs from the terminal
+
+⏱ Chapters:
+0:00 Introduction — why methods matter in every language
+0:38 Opening the file in VS Code
+1:00 Writing a void method: greet()
+1:52 Adding parameters: greetUser(String name)
+2:45 Return types: add(int a, int b)
+3:40 Method overloading: add(double a, double b)
+4:38 Recursion: factorial(int n) with base case
+5:45 Writing the main method and calling everything
+7:10 Compiling with javac and running the program
+8:10 Recap and what to learn next
+
+💻 Key concepts from the code:
+• void greet()          — no input, no return, just runs
+• void greetUser(String name) — takes a String parameter
+• int add(int a, int b)       — returns an int
+• double add(double a, double b) — overloaded version
+• int factorial(int n)        — recursive, calls itself until n <= 1
+
+🔗 Watch next:
+→ Java Bubble Sort Tutorial (in this series)
+
+📚 Great for:
+• Java beginners learning functions and methods
+• Students studying Object-Oriented Programming (OOP)
+• Anyone who wants to understand recursion with a clear example
+• Coding interview prep — method design is tested constantly
+
+Subscribe for weekly Java tutorials — new videos every week.
+
+#Java #JavaMethods #JavaTutorial #LearnJava #Recursion #MethodOverloading #CodingTutorial #JavaForBeginners #VSCode #Programming #ComputerScience #javac #OOP #Functions #BeginnersGuide

@@ -1,0 +1,47 @@
+Learn Bubble Sort in Java from scratch — we write, compile, and run the full algorithm in VS Code in under 7 minutes. If you can shuffle a deck of cards, you already understand the core idea.
+
+In this tutorial you will write a complete BubbleSort.java program step by step, covering nested loops, the classic temp-variable swap pattern, and how to compile and run Java from the integrated terminal. By the end you will have a working sorter and a clear mental model of O(n²) time complexity.
+
+📌 What you will learn:
+• How bubble sort works (the card-shuffle analogy)
+• Writing nested loops to make passes through an array
+• The temp-variable swap pattern — used in algorithms everywhere
+• Compiling with javac and running with java in VS Code's terminal
+• Why bubble sort is O(n²) and when to use it vs faster alternatives
+
+⏱ Chapters:
+0:00 Introduction — what is bubble sort?
+0:42 Opening the file in VS Code
+1:05 Writing the bubbleSort method and nested loops
+2:10 Implementing the swap with a temp variable
+3:00 Writing the main method and test array
+4:05 Saving and compiling with javac
+5:10 Running the program and reading the output
+6:10 Wrap-up — time complexity and what to learn next
+
+💻 Source code:
+public class BubbleSort {
+    public static void bubbleSort(int[] arr) {
+        int n = arr.length;
+        for (int i = 0; i < n - 1; i++)
+            for (int j = 0; j < n - i - 1; j++)
+                if (arr[j] > arr[j + 1]) {
+                    int temp = arr[j];
+                    arr[j] = arr[j + 1];
+                    arr[j + 1] = temp;
+                }
+    }
+}
+
+🔗 Watch next:
+→ Java Methods and Functions Tutorial (in this series)
+
+📚 Great for:
+• Java beginners learning sorting algorithms
+• CS students studying Data Structures and Algorithms
+• Anyone preparing for coding interviews
+• CCNA or CompSci fundamentals review
+
+If this helped you, like and subscribe — more Java tutorials dropping every week.
+
+#Java #BubbleSort #JavaTutorial #SortingAlgorithms #LearnJava #CodingTutorial #DataStructures #Algorithms #JavaForBeginners #VSCode #Programming #ComputerScience #javac #CodeWithMe #BeginnersGuide
