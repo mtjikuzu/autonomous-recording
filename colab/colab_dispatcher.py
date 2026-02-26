@@ -308,3 +308,121 @@ def create_dispatcher_from_args(
         poll_interval=poll_interval,
     )
     return ColabTTSDispatcher(config)
+
+
+class ColabF5TTSDispatcher(ColabTTSDispatcher):
+    """Dispatches F5-TTS voice cloning jobs to Google Colab via Google Drive.
+
+    Same protocol as ColabTTSDispatcher but with additional fields:
+    - ref_audio: reference voice clip filename
+    - ref_text: transcription of the reference audio
+    - seed: reproducibility seed
+    - nfe_step: number of flow-matching steps (quality vs speed)
+    """
+
+    def dispatch_and_wait(
+        self,
+        spec: dict[str, Any],
+        audio_dir: Path,
+    ) -> dict[str, dict[str, Any]]:
+        """Dispatch F5-TTS job to Colab and wait for results."""
+        if not self.drive_base.parent.exists():
+            raise ColabTTSError(
+                f"Google Drive sync directory not found: {self.drive_base.parent}\n"
+                "Make sure Google Drive is mounted/synced on this machine.\n"
+                "See colab/README.md for setup instructions."
+            )
+
+        self.drive_base.mkdir(parents=True, exist_ok=True)
+
+        job_id = self._create_job_id()
+        job_dir = self.drive_base / job_id
+        job_dir.mkdir(parents=True, exist_ok=True)
+
+        self._log(f"Creating F5-TTS job: {job_id}")
+
+        # Build request
+        settings = spec["settings"]
+        items = spec.get("steps") or spec.get("segments", [])
+
+        steps_data = []
+        for item in items:
+            narration = str(item.get("narration", "")).strip()
+            if narration:
+                steps_data.append({"id": str(item["id"]), "narration": narration})
+
+        if not steps_data:
+            raise ColabTTSError("No narration text found in spec")
+
+        # F5-TTS specific fields
+        ref_audio = str(settings.get("f5_ref_audio", ""))
+        ref_text = str(settings.get("f5_ref_text", ""))
+        seed = settings.get("f5_seed", None)
+        nfe_step = int(settings.get("f5_nfe_step", 32))
+
+        # Copy reference audio to job directory if it's a local file
+        if ref_audio and Path(ref_audio).expanduser().exists():
+            ref_path = Path(ref_audio).expanduser().resolve()
+            dest = job_dir / ref_path.name
+            shutil.copy2(ref_path, dest)
+            ref_audio = ref_path.name  # Just the filename in the job dir
+            self._log(f"Copied reference audio: {ref_path.name}")
+
+        request = {
+            "ref_audio": ref_audio,
+            "ref_text": ref_text,
+            "speed": float(settings.get("speech_speed", 1.0)),
+            "seed": seed,
+            "nfe_step": nfe_step,
+            "steps": steps_data,
+        }
+
+        request_path = job_dir / "request.json"
+        with request_path.open("w", encoding="utf-8") as f:
+            json.dump(request, f, indent=2)
+
+        self._log(
+            f"Job {job_id}: {len(steps_data)} steps dispatched "
+            f"(ref={ref_audio or 'default'}, nfe={nfe_step})"
+        )
+        self._log(f"Waiting {self.config.sync_delay:.0f}s for Drive sync...")
+        time.sleep(self.config.sync_delay)
+
+        step_audio = self._wait_for_completion(job_id, job_dir, audio_dir, items)
+        return step_audio
+
+
+def create_f5_dispatcher_from_args(
+    drive_path: str | None = None,
+    timeout: float = 600.0,
+    poll_interval: float = 5.0,
+) -> ColabF5TTSDispatcher:
+    """Create an F5-TTS dispatcher from CLI arguments or environment variables."""
+    if drive_path is None:
+        drive_path = os.environ.get("COLAB_F5_TTS_DRIVE_PATH")
+
+    if drive_path is None:
+        candidates = [
+            Path.home() / "gdrive" / "autonomous-recording" / "f5-tts-jobs",
+            Path.home()
+            / "Google Drive"
+            / "My Drive"
+            / "autonomous-recording"
+            / "f5-tts-jobs",
+        ]
+        for candidate in candidates:
+            if candidate.parent.exists():
+                drive_path = str(candidate)
+                break
+
+        if drive_path is None:
+            drive_path = str(
+                Path.home() / "gdrive" / "autonomous-recording" / "f5-tts-jobs"
+            )
+
+    config = ColabTTSConfig(
+        drive_base=Path(drive_path),
+        timeout=timeout,
+        poll_interval=poll_interval,
+    )
+    return ColabF5TTSDispatcher(config)

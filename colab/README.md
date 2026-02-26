@@ -1,16 +1,19 @@
 # Colab GPU Offloading
 
-Offload TTS narration generation (and optionally video encoding) to a Google Colab T4 GPU.
+Offload TTS narration generation to a Google Colab T4 GPU. Supports two TTS backends:
+
+- **Kokoro** (`--tts-backend colab`): Fast, lightweight TTS. Same model as local, but on GPU.
+- **F5-TTS** (`--tts-backend colab-f5`): Voice cloning TTS. Uses a reference audio clip to clone any voice. Slower but much more realistic.
 
 ## Architecture
 
 ```
 Local Machine                         Google Colab T4
 ─────────────                         ───────────────
-record-tour.py                        tts_worker.ipynb
-  --tts-backend colab                   ├─ Mount Google Drive
-  │                                     ├─ Load Kokoro + onnxruntime-gpu
-  ├─ Write request.json ──► GDrive ──►  ├─ Watch for jobs
+record-tour.py                        tts_worker.ipynb (Kokoro)
+  --tts-backend colab                  OR f5_tts_worker.ipynb (F5-TTS)
+  │                                     ├─ Mount Google Drive
+  ├─ Write request.json ──► GDrive ──►  ├─ Load model (cached on Drive)
   ├─ Wait for done.marker               ├─ Generate WAVs (GPU)
   ├─ Copy WAVs from Drive  ◄── GDrive ◄─┘ Write done.marker
   ├─ Playwright capture (local)
@@ -38,7 +41,8 @@ mkdir -p ~/gdrive
 rclone mount gdrive: ~/gdrive --vfs-cache-mode writes --daemon
 
 # The job directory will be at:
-# ~/gdrive/autonomous-recording/tts-jobs/
+# ~/gdrive/autonomous-recording/tts-jobs/     (Kokoro)
+# ~/gdrive/autonomous-recording/f5-tts-jobs/   (F5-TTS)
 ```
 
 **Option B: Google Drive for Desktop (macOS/Windows)**
@@ -47,10 +51,16 @@ rclone mount gdrive: ~/gdrive --vfs-cache-mode writes --daemon
 
 ### 2. Colab Notebook Setup
 
+**For Kokoro** (`--tts-backend colab`):
 1. Open `colab/tts_worker.ipynb` in Google Colab
 2. Set runtime to **GPU → T4** (Runtime → Change runtime type)
-3. Run all cells in order (1 through 8)
-4. Cell 8 starts the job watcher loop — leave it running
+3. Run all cells — the last cell starts the job watcher loop
+
+**For F5-TTS** (`--tts-backend colab-f5`):
+1. Open `colab/f5_tts_worker.ipynb` in Google Colab
+2. Set runtime to **GPU → T4**
+3. Upload your reference voice WAV to `~/gdrive/autonomous-recording/voice-refs/`
+4. Run all cells — the last cell starts the F5-TTS job watcher
 
 ### 3. Run the Pipeline
 
@@ -74,12 +84,28 @@ python record-tour.py tutorial.json \
   --dry-run
 ```
 
-## Environment Variable
+### F5-TTS Voice Cloning
+
+```bash
+# F5-TTS with voice cloning
+python record-tour.py tutorial.json --tts-backend colab-f5
+
+# With custom Drive path for F5 jobs
+python record-tour.py tutorial.json \
+  --tts-backend colab-f5 \
+  --colab-drive-path ~/gdrive/autonomous-recording/f5-tts-jobs
+```
+
+## Environment Variables
 
 Instead of `--colab-drive-path`, you can set:
 
 ```bash
+# For Kokoro backend
 export COLAB_TTS_DRIVE_PATH=~/gdrive/autonomous-recording/tts-jobs
+
+# For F5-TTS backend
+export COLAB_F5_TTS_DRIVE_PATH=~/gdrive/autonomous-recording/f5-tts-jobs
 ```
 
 ## How It Works
@@ -117,6 +143,59 @@ export COLAB_TTS_DRIVE_PATH=~/gdrive/autonomous-recording/tts-jobs
 
 4. **Local** detects `done.marker`, copies WAVs to the work directory, continues pipeline.
 
+### F5-TTS Job Protocol
+
+Same structure, different request fields and separate jobs directory (`f5-tts-jobs/`):
+
+1. **Local** creates `f5-tts-jobs/<job-id>/request.json`:
+   ```json
+   {
+     "ref_audio": "teacher-voice.wav",
+     "ref_text": "Transcription of the reference audio.",
+     "speed": 1.0,
+     "seed": 42,
+     "nfe_step": 32,
+     "steps": [
+       {"id": "step-01", "narration": "Welcome to this tutorial..."},
+       {"id": "step-02", "narration": "First, let's create a file..."}
+     ]
+   }
+   ```
+   If `ref_audio` is a local file path, it's copied into the job directory automatically.
+
+2. **Colab** generates WAVs using the reference voice, writes `done.marker` when complete.
+
+### F5-TTS Spec Settings
+
+Add these optional fields to your spec's `settings` object:
+
+```json
+{
+  "settings": {
+    "f5_ref_audio": "~/voice-samples/my-voice.wav",
+    "f5_ref_text": "This is a sample of my voice reading a sentence.",
+    "f5_seed": 42,
+    "f5_nfe_step": 32
+  }
+}
+```
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `f5_ref_audio` | Yes (for F5) | — | Path to reference voice WAV (10-15s recommended) |
+| `f5_ref_text` | Yes (for F5) | — | Exact transcription of the reference audio |
+| `f5_seed` | No | random | Seed for reproducible output |
+| `f5_nfe_step` | No | 32 | Flow-matching steps (higher = better quality, slower. Range: 1-128) |
+
+### Preparing Reference Audio
+
+For best F5-TTS results:
+- Record **10-15 seconds** of clear speech
+- Use a quiet environment (no background noise)
+- Speak naturally in the tone you want for tutorials
+- Save as WAV (16kHz+ sample rate)
+- Transcribe the audio exactly into `f5_ref_text`
+
 ### Error Handling
 
 - If Colab fails, it writes `error.marker` with details
@@ -141,7 +220,8 @@ export COLAB_TTS_DRIVE_PATH=~/gdrive/autonomous-recording/tts-jobs
 
 | File | Description |
 |------|-------------|
-| `tts_worker.ipynb` | Colab notebook — run on T4 GPU |
-| `colab_dispatcher.py` | Local-side job dispatch and result collection |
+| `tts_worker.ipynb` | Kokoro GPU Colab notebook |
+| `f5_tts_worker.ipynb` | F5-TTS voice cloning Colab notebook |
+| `colab_dispatcher.py` | Local-side job dispatch (`ColabTTSDispatcher` + `ColabF5TTSDispatcher`) |
 | `__init__.py` | Python package marker |
 | `README.md` | This file |

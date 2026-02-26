@@ -178,6 +178,18 @@ def load_tour_spec(spec_path: Path) -> dict[str, Any]:
         raise TourError("Spec settings.mode must be 'independent' or 'continuous'")
     settings["mode"] = mode
 
+    # Optional F5-TTS voice cloning settings (used with --tts-backend colab-f5)
+    if "f5_ref_audio" in settings:
+        ref_audio = Path(str(settings["f5_ref_audio"])).expanduser()
+        if not ref_audio.suffix.lower() in (".wav", ".mp3", ".flac", ".ogg"):
+            raise TourError(
+                f"settings.f5_ref_audio must be a WAV/MP3/FLAC/OGG file, got: {ref_audio.name}"
+            )
+    if "f5_nfe_step" in settings:
+        nfe = int(settings["f5_nfe_step"])
+        if nfe < 1 or nfe > 128:
+            raise TourError("settings.f5_nfe_step must be between 1 and 128")
+
     # Validate step/segment IDs
     item_ids: set[str] = set()
     items = spec.get("steps") or spec.get("segments", [])
@@ -1333,6 +1345,23 @@ def _dispatch_colab_tts(
     return dispatcher.dispatch_and_wait(spec, audio_dir)
 
 
+def _dispatch_colab_f5_tts(
+    spec: dict[str, Any],
+    audio_dir: Path,
+    args: argparse.Namespace,
+) -> dict[str, dict[str, Any]]:
+    """Dispatch F5-TTS voice cloning generation to Google Colab via Drive sync."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from colab.colab_dispatcher import create_f5_dispatcher_from_args
+
+    log("Phase B: dispatching F5-TTS (voice cloning) to Colab GPU worker")
+    dispatcher = create_f5_dispatcher_from_args(
+        drive_path=getattr(args, 'colab_drive_path', None),
+        timeout=getattr(args, 'colab_timeout', 600.0),
+    )
+    return dispatcher.dispatch_and_wait(spec, audio_dir)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Shot-based autonomous narrated website tour recorder"
@@ -1352,9 +1381,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--tts-backend",
-        choices=["local", "colab"],
+        choices=["local", "colab", "colab-f5"],
         default="local",
-        help="TTS backend: 'local' (Kokoro CPU, default) or 'colab' (GPU via Google Drive)",
+        help="TTS backend: 'local' (Kokoro CPU), 'colab' (Kokoro GPU), 'colab-f5' (F5-TTS voice cloning GPU)",
     )
     parser.add_argument(
         "--colab-drive-path",
@@ -1410,6 +1439,8 @@ def main() -> int:
             # Prerender TTS for all segments
             if args.tts_backend == "colab":
                 step_audio = _dispatch_colab_tts(spec, dirs["audio"], args)
+            elif args.tts_backend == "colab-f5":
+                step_audio = _dispatch_colab_f5_tts(spec, dirs["audio"], args)
             else:
                 step_audio = prerender_tts_mixed(spec, dirs["audio"], skip_tts=args.skip_tts)
 
@@ -1433,6 +1464,8 @@ def main() -> int:
 
             if args.tts_backend == "colab":
                 step_audio = _dispatch_colab_tts(spec, dirs["audio"], args)
+            elif args.tts_backend == "colab-f5":
+                step_audio = _dispatch_colab_f5_tts(spec, dirs["audio"], args)
             else:
                 step_audio = prerender_tts(spec, dirs["audio"], skip_tts=args.skip_tts)
             mode = str(spec["settings"].get("mode", "independent"))
