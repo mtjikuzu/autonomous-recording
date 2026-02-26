@@ -126,11 +126,18 @@ def load_tour_spec(spec_path: Path) -> dict[str, Any]:
     except json.JSONDecodeError as exc:
         raise TourError(f"Spec JSON is invalid: {exc}") from exc
 
-    for key in ("meta", "settings", "steps", "output"):
-        if key not in spec:
-            raise TourError(f"Spec missing required field: {key}")
-    if not isinstance(spec["steps"], list) or not spec["steps"]:
+    # Allow either traditional 'steps' or new 'segments' format
+    has_steps = "steps" in spec
+    has_segments = "segments" in spec
+    
+    if not has_steps and not has_segments:
+        raise TourError("Spec must have either 'steps' or 'segments' field")
+    
+    if has_steps and (not isinstance(spec["steps"], list) or not spec["steps"]):
         raise TourError("Spec 'steps' must be a non-empty array")
+    
+    if has_segments and (not isinstance(spec["segments"], list) or not spec["segments"]):
+        raise TourError("Spec 'segments' must be a non-empty array")
 
     meta = spec["meta"]
     settings = spec["settings"]
@@ -171,15 +178,18 @@ def load_tour_spec(spec_path: Path) -> dict[str, Any]:
         raise TourError("Spec settings.mode must be 'independent' or 'continuous'")
     settings["mode"] = mode
 
-    step_ids: set[str] = set()
-    for idx, step in enumerate(spec["steps"], start=1):
-        for field in ("id", "url", "narration"):
-            if field not in step:
-                raise TourError(f"Step {idx} missing required field: {field}")
-        step_id = str(step["id"])
-        if step_id in step_ids:
-            raise TourError(f"Duplicate step id: {step_id}")
-        step_ids.add(step_id)
+    # Validate step/segment IDs
+    item_ids: set[str] = set()
+    items = spec.get("steps") or spec.get("segments", [])
+    for idx, item in enumerate(items, start=1):
+        for field in ("id", "narration"):
+            if field not in item:
+                item_type = "step" if "steps" in spec else "segment"
+                raise TourError(f"{item_type.capitalize()} {idx} missing required field: {field}")
+        item_id = str(item["id"])
+        if item_id in item_ids:
+            raise TourError(f"Duplicate id: {item_id}")
+        item_ids.add(item_id)
 
     target = float(meta["target_duration_seconds"])
     if target <= 0:
@@ -188,9 +198,11 @@ def load_tour_spec(spec_path: Path) -> dict[str, Any]:
     if max_dur < target:
         raise TourError("max_duration_seconds must be >= target_duration_seconds")
 
-    budget = target / len(spec["steps"])
-    for step in spec["steps"]:
-        step["time_budget_seconds"] = budget
+    # Calculate budget for steps (not segments)
+    if "steps" in spec:
+        budget = target / len(spec["steps"])
+        for step in spec["steps"]:
+            step["time_budget_seconds"] = budget
 
     return spec
 
@@ -1303,6 +1315,24 @@ def print_report(
             )
 
 
+def _dispatch_colab_tts(
+    spec: dict[str, Any],
+    audio_dir: Path,
+    args: argparse.Namespace,
+) -> dict[str, dict[str, Any]]:
+    """Dispatch TTS generation to Google Colab via Drive sync."""
+    # Import here to avoid hard dependency when using local backend
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from colab.colab_dispatcher import create_dispatcher_from_args
+
+    log("Phase B: dispatching TTS to Colab GPU worker")
+    dispatcher = create_dispatcher_from_args(
+        drive_path=getattr(args, 'colab_drive_path', None),
+        timeout=getattr(args, 'colab_timeout', 600.0),
+    )
+    return dispatcher.dispatch_and_wait(spec, audio_dir)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Shot-based autonomous narrated website tour recorder"
@@ -1319,6 +1349,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--work-dir",
         help="Use an existing work directory (required for --skip-tts reuse)",
+    )
+    parser.add_argument(
+        "--tts-backend",
+        choices=["local", "colab"],
+        default="local",
+        help="TTS backend: 'local' (Kokoro CPU, default) or 'colab' (GPU via Google Drive)",
+    )
+    parser.add_argument(
+        "--colab-drive-path",
+        help="Path to Google Drive sync dir for Colab TTS (default: ~/gdrive/autonomous-recording/tts-jobs)",
+    )
+    parser.add_argument(
+        "--colab-timeout",
+        type=float,
+        default=600.0,
+        help="Max seconds to wait for Colab TTS worker (default: 600)",
     )
     return parser.parse_args()
 
@@ -1362,7 +1408,10 @@ def main() -> int:
             run_pre_setup(spec)
 
             # Prerender TTS for all segments
-            step_audio = prerender_tts_mixed(spec, dirs["audio"], skip_tts=args.skip_tts)
+            if args.tts_backend == "colab":
+                step_audio = _dispatch_colab_tts(spec, dirs["audio"], args)
+            else:
+                step_audio = prerender_tts_mixed(spec, dirs["audio"], skip_tts=args.skip_tts)
 
             log("Phase C: running mixed capture (slides + demos)")
             results = run_mixed_capture(
@@ -1371,7 +1420,7 @@ def main() -> int:
 
             final_path: Path | None = None
             if not args.dry_run:
-                final_path = assemble_mixed_video(spec, results, dirs)
+                final_path = assemble_mixed_video(spec, results, step_audio, dirs)
                 # Apply intro/outro overlays if configured
                 if final_path is not None:
                     final_path = apply_overlays(spec, final_path, dirs["assembly"])
@@ -1382,7 +1431,10 @@ def main() -> int:
 
             run_pre_setup(spec)
 
-            step_audio = prerender_tts(spec, dirs["audio"], skip_tts=args.skip_tts)
+            if args.tts_backend == "colab":
+                step_audio = _dispatch_colab_tts(spec, dirs["audio"], args)
+            else:
+                step_audio = prerender_tts(spec, dirs["audio"], skip_tts=args.skip_tts)
             mode = str(spec["settings"].get("mode", "independent"))
             if mode == "continuous":
                 log("Phase C: running in continuous capture mode")
@@ -1771,31 +1823,61 @@ def prerender_tts_mixed(
 def assemble_mixed_video(
     spec: dict[str, Any],
     results: list[StepResult],
+    step_audio: dict[str, Path],
     dirs: dict[str, Path]
 ) -> Path:
-    """Assemble mixed slide/demo segments into final video."""
-    log("Phase D: assembling mixed segment video")
+    """Assemble mixed slide/demo segments with audio into final video."""
+    log("Phase D: assembling mixed segment video with audio")
 
     if not results:
         raise TourError("No segments to assemble")
 
     assembly_dir = dirs["assembly"]
 
-    # Normalize all segment clips
-    normalized_clips: list[Path] = []
-    for i, result in enumerate(results):
+    # Build segment list with audio
+    segments_with_audio: list[tuple[Path, Path]] = []
+    for result in results:
         if not result.success or not result.clip_path:
             log(f"Phase D: skipping failed segment {result.step_id}")
             continue
+        
+        audio_path = step_audio.get(result.step_id)
+        if not audio_path or not audio_path.exists():
+            log(f"Phase D: missing audio for {result.step_id}, using silent")
+            # Create silent audio
+            silent_audio = assembly_dir / f"{result.step_id}-silent.wav"
+            cmd = [FFMPEG_BIN, "-y", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono",
+                   "-t", "10", "-acodec", "pcm_s16le", str(silent_audio)]
+            subprocess.run(cmd, capture_output=True)
+            audio_path = silent_audio
+        
+        segments_with_audio.append((result.clip_path, audio_path))
 
-        normalized = assembly_dir / f"segment-{i:03d}-normalized.mp4"
-        transcode_step_clip(result.clip_path, normalized)
-        normalized_clips.append(normalized)
-
-    if not normalized_clips:
+    if not segments_with_audio:
         raise TourError("No successful segments to assemble")
 
-    # Concatenate all segments
+    # Normalize and mux each segment with its audio
+    normalized_clips: list[Path] = []
+    for i, (video_path, audio_path) in enumerate(segments_with_audio):
+        normalized = assembly_dir / f"segment-{i:03d}-normalized.mp4"
+        
+        # Mux video with audio, normalize to consistent format
+        cmd = [
+            FFMPEG_BIN, "-y",
+            "-i", str(video_path),
+            "-i", str(audio_path),
+            "-vf", "fps=30,format=yuv420p",
+            "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+            "-ac", "1", "-ar", "24000",
+            "-c:a", "aac", "-b:a", "192k",
+            "-shortest",
+            "-movflags", "+faststart",
+            str(normalized),
+        ]
+        run_cmd(cmd, f"Normalize segment {i} with audio")
+        normalized_clips.append(normalized)
+
+    # Concatenate all normalized segments
     concat_list = assembly_dir / "mixed-concat.txt"
     with concat_list.open("w", encoding="utf-8") as f:
         for clip in normalized_clips:
@@ -1805,22 +1887,15 @@ def assemble_mixed_video(
     final_path.parent.mkdir(parents=True, exist_ok=True)
 
     cmd = [
-        FFMPEG_BIN,
-        "-y",
-        "-f", "concat",
-        "-safe", "0",
+        FFMPEG_BIN, "-y",
+        "-f", "concat", "-safe", "0",
         "-i", str(concat_list),
-        "-c:v", "libx264",
-        "-preset", "medium",
-        "-crf", "20",
-        "-ac", "1",
-        "-c:a", "aac",
-        "-b:a", "192k",
+        "-c", "copy",
         "-movflags", "+faststart",
         str(final_path),
     ]
 
-    run_cmd(cmd, "Assemble mixed segment video")
+    run_cmd(cmd, "Concatenate mixed segments")
 
     # Cleanup
     for clip in normalized_clips:

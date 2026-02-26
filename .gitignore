@@ -32,3 +32,6 @@ Thumbs.db
 workspaces/**/*.class
 overlays/node_modules/
 overlays/out/
+
+# Colab notebook checkpoints
+.ipynb_checkpoints/
