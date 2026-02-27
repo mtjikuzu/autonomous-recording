@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate YouTube thumbnails for Bubble Sort and Methods tutorials."""
+"""Generate YouTube thumbnails for Bubble Sort, Methods, and Array Sum tutorials."""
 
 from PIL import Image, ImageDraw, ImageFont
 import os
@@ -154,4 +154,31 @@ make_thumbnail(
     ],
     code_lines=mt_code,
     bottom_label="Overloading \u00b7 Recursion \u00b7 OOP",
+)
+
+
+# ── Array Sum thumbnail ───────────────────────────────────────────────────────
+as_code = [
+    ("int total = 0;", VAL_COLOR),
+    ("for (int num : arr) {", KW_COLOR),
+    ("    total += num;", VAL_COLOR),
+    ("}", BASE_COLOR),
+    ("return total;", KW_COLOR),
+    ("", BASE_COLOR),
+    ("// safeSum with guard clause", COMMENT_CLR),
+    ("if (arr == null) return 0;", KW_COLOR),
+    ("", BASE_COLOR),
+    ("// {1,2,3,4,5,6} \u2192 21", COMMENT_CLR),
+    ("// O(n) Linear Time", COMMENT_CLR),
+]
+
+make_thumbnail(
+    path=f"{OUT}/arrays-total-thumbnail.png",
+    accent="#58A6FF",
+    title_lines=[
+        ("ARRAY", 160, 150),
+        ("SUM", 160, 320),
+    ],
+    code_lines=as_code,
+    bottom_label="O(n) Linear Time \u00b7 Accumulator Pattern",
 )
