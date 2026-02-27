@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+
 import soundfile as sf
 from kokoro_onnx import Kokoro
 from playwright.sync_api import Error as PlaywrightError
@@ -1428,6 +1429,317 @@ def _maybe_nvenc_reencode(
     return video_path
 
 
+# ── Dynamic zoom/pan (virtual camera) for mobile-friendly output ──────────
+
+# Focus presets: (center_x, center_y, zoom) for VS Code layout at 1920x1080
+# Coordinates assume sidebar hidden, terminal open at bottom ~30%.
+FOCUS_PRESETS: dict[str, tuple[float, float, float]] = {
+    "editor": (780.0, 400.0, 2.2),    # Editor text area (center of code region)
+    "terminal": (960.0, 870.0, 2.4),  # Terminal panel (bottom section)
+    "full": (960.0, 540.0, 1.0),      # Full view (no zoom)
+}
+
+# Default transition duration in milliseconds between camera states
+ZOOM_TRANSITION_MS = 600
+# Hold at full view briefly during navigation actions (ms)
+ZOOM_NAV_HOLD_MS = 800
+
+
+@dataclass
+class CameraKeyframe:
+    """A point on the virtual camera timeline."""
+    time: float          # seconds into the video
+    cx: float            # center X in source pixels (0..1920)
+    cy: float            # center Y in source pixels (0..1080)
+    zoom: float          # zoom factor (1.0 = full, 2.2 = editor crop)
+    transition_ms: int   # ease-in-out duration to reach this state
+
+
+def _action_focus(action: dict[str, Any]) -> str:
+    """Map a single action to a focus region name."""
+    atype = action.get("type", "")
+    if atype in ("type_text", "focus_editor", "highlight_lines", "select_all_and_delete"):
+        return "editor"
+    if atype == "terminal_type":
+        return "terminal"
+    if atype in ("command_palette", "dismiss_popups", "wait_for_load",
+                 "wait_for_selector", "hide_secondary_sidebar"):
+        return "full"
+    # press_key / pause / other — inherit previous focus
+    return ""
+
+
+def _dominant_focus(actions: list[dict[str, Any]]) -> str:
+    """Determine dominant focus region for a step from its actions."""
+    counts: dict[str, int] = {}
+    for action in actions:
+        focus = _action_focus(action)
+        if focus:
+            counts[focus] = counts.get(focus, 0) + 1
+    if not counts:
+        return "editor"
+    # Prefer terminal if any terminal_type action exists, otherwise majority
+    if "terminal" in counts:
+        return "terminal"
+    return max(counts, key=lambda k: counts[k])
+
+
+def build_camera_path(
+    spec: dict[str, Any],
+    results: list["StepResult"],
+    total_duration: float,
+) -> list[CameraKeyframe]:
+    """Generate a camera keyframe timeline from step actions and offsets.
+
+    Auto-derives focus regions from action types with smooth transitions.
+    Supports optional per-step overrides via spec step 'zoom' field.
+    """
+    steps = spec.get("steps") or spec.get("segments", [])
+    keyframes: list[CameraKeyframe] = []
+
+    # Start at full view
+    keyframes.append(CameraKeyframe(
+        time=0.0, cx=960.0, cy=540.0, zoom=1.0, transition_ms=0
+    ))
+
+    prev_focus = "full"
+    for result in results:
+        # Find matching step definition
+        step_def = None
+        for s in steps:
+            if s["id"] == result.step_id:
+                step_def = s
+                break
+
+        if step_def is None:
+            continue
+
+        step_start = result.video_offset
+        step_end = result.step_end_offset or (step_start + result.audio_duration + 1.0)
+
+        # Check for explicit per-step zoom override
+        zoom_override = step_def.get("zoom")
+        if zoom_override:
+            focus_name = zoom_override.get("focus", "editor")
+            zoom_level = zoom_override.get("z")
+            cx_override = zoom_override.get("cx")
+            cy_override = zoom_override.get("cy")
+            transition = zoom_override.get("transition_ms", ZOOM_TRANSITION_MS)
+            preset = FOCUS_PRESETS.get(focus_name, FOCUS_PRESETS["editor"])
+            cx = cx_override if cx_override is not None else preset[0]
+            cy = cy_override if cy_override is not None else preset[1]
+            z = zoom_level if zoom_level is not None else preset[2]
+        else:
+            # Auto-derive from actions
+            actions = step_def.get("actions", [])
+            focus_name = _dominant_focus(actions)
+            preset = FOCUS_PRESETS[focus_name]
+            cx, cy, z = preset
+            transition = ZOOM_TRANSITION_MS
+
+        # If focus changed, insert brief full-view hold at transitions
+        if focus_name != prev_focus and prev_focus != "full" and focus_name != "full":
+            # Zoom out to full briefly, then zoom into new region
+            full_preset = FOCUS_PRESETS["full"]
+            keyframes.append(CameraKeyframe(
+                time=step_start,
+                cx=full_preset[0], cy=full_preset[1], zoom=full_preset[2],
+                transition_ms=transition,
+            ))
+            keyframes.append(CameraKeyframe(
+                time=step_start + ZOOM_NAV_HOLD_MS / 1000.0,
+                cx=cx, cy=cy, zoom=z,
+                transition_ms=transition,
+            ))
+        else:
+            keyframes.append(CameraKeyframe(
+                time=step_start,
+                cx=cx, cy=cy, zoom=z,
+                transition_ms=transition,
+            ))
+
+        prev_focus = focus_name
+
+    # End at full view for clean finish
+    if total_duration > 0:
+        keyframes.append(CameraKeyframe(
+            time=max(0.0, total_duration - 2.0),
+            cx=960.0, cy=540.0, zoom=1.0,
+            transition_ms=ZOOM_TRANSITION_MS,
+        ))
+
+    return keyframes
+
+
+
+def _build_zoom_filter_complex(
+    keyframes: list[CameraKeyframe],
+    fps: int = 30,
+    src_w: int = 1920,
+    src_h: int = 1080,
+) -> str:
+    """Build FFmpeg filter_complex for segment-based zoom.
+
+    Strategy: split the video into segments at each keyframe, apply a static
+    crop+scale per segment, and concat them back.  Transition segments get a
+    linear interpolation of crop parameters from the previous state to the
+    current state using the 'n' frame counter.  This is orders of magnitude
+    faster than zoompan because crop+scale is a trivial per-frame operation.
+    """
+    if not keyframes or len(keyframes) < 2:
+        return ""
+
+    parts: list[str] = []
+    seg_labels: list[str] = []
+
+    for i in range(1, len(keyframes)):
+        prev = keyframes[i - 1]
+        curr = keyframes[i]
+        t0 = prev.time
+        t1 = curr.time
+        seg_dur = t1 - t0
+        if seg_dur <= 0:
+            continue
+
+        trans_dur = min(curr.transition_ms / 1000.0, seg_dur)
+        trans_frames = max(1, int(trans_dur * fps))
+        seg_frames = max(1, int(seg_dur * fps))
+
+        # Trim this segment from the input
+        seg_label = f"seg{i}"
+        aseg_label = f"aseg{i}"
+        parts.append(
+            f"[0:v]trim=start={t0:.4f}:end={t1:.4f},setpts=PTS-STARTPTS[{seg_label}_raw]"
+        )
+        parts.append(
+            f"[0:a]atrim=start={t0:.4f}:end={t1:.4f},asetpts=PTS-STARTPTS[{aseg_label}]"
+        )
+
+        # Compute crop parameters — zoom determines crop window size
+        # During the transition region (first trans_frames), interpolate
+        # from prev state to curr state.  After that, hold at curr state.
+        # crop w/h: floor(src_dim / zoom / 2) * 2  (even dimensions)
+        # crop x/y: clip(cx - w/2, 0, src_dim - w)
+        #
+        # Use 'n' (frame count in the segment, 0-indexed) for interpolation.
+        if abs(prev.zoom - curr.zoom) < 0.001 and abs(prev.cx - curr.cx) < 1 and abs(prev.cy - curr.cy) < 1:
+            # Static segment — no interpolation needed (fastest path)
+            w = max(2, int(src_w / curr.zoom) // 2 * 2)
+            h = max(2, int(src_h / curr.zoom) // 2 * 2)
+            x = max(0, min(int(curr.cx - w / 2), src_w - w))
+            y = max(0, min(int(curr.cy - h / 2), src_h - h))
+            parts.append(
+                f"[{seg_label}_raw]crop={w}:{h}:{x}:{y},"
+                f"scale={src_w}:{src_h}:flags=lanczos,setsar=1[{seg_label}]"
+            )
+        else:
+            # Animated segment — smoothstep interpolation via 'n' frame counter
+            # Commas inside expressions must be escaped as \, in filter_complex
+            # p = clip(n / trans_frames, 0, 1)
+            p = f"clip(n/{trans_frames}\\,0\\,1)"
+            # Smoothstep: s = p*p*(3-2*p)
+            s = f"({p}*{p}*(3-2*{p}))"
+
+            z_expr = f"{prev.zoom:.3f}+{curr.zoom - prev.zoom:.3f}*{s}"
+            cx_expr = f"{prev.cx:.1f}+{curr.cx - prev.cx:.1f}*{s}"
+            cy_expr = f"{prev.cy:.1f}+{curr.cy - prev.cy:.1f}*{s}"
+
+            w_expr = f"max(2\\,floor({src_w}/({z_expr})/2)*2)"
+            h_expr = f"max(2\\,floor({src_h}/({z_expr})/2)*2)"
+            x_expr = f"clip(({cx_expr})-({w_expr})/2\\,0\\,{src_w}-({w_expr}))"
+            y_expr = f"clip(({cy_expr})-({h_expr})/2\\,0\\,{src_h}-({h_expr}))"
+
+            parts.append(
+                f"[{seg_label}_raw]crop=w='{w_expr}':h='{h_expr}':x='{x_expr}':y='{y_expr}',"
+                f"scale={src_w}:{src_h}:flags=lanczos,setsar=1[{seg_label}]"
+            )
+
+        seg_labels.append(f"[{seg_label}][{aseg_label}]")
+
+    if not seg_labels:
+        return ""
+
+    # Concat all segments back together
+    concat_inputs = "".join(seg_labels)
+    parts.append(
+        f"{concat_inputs}concat=n={len(seg_labels)}:v=1:a=1[vout][aout]"
+    )
+
+    return ";".join(parts)
+
+
+def apply_zoom_pan(
+    video_path: Path,
+    keyframes: list[CameraKeyframe],
+    assembly_dir: Path,
+) -> Path:
+    """Apply dynamic zoom/pan to assembled video using segment-based crop+scale.
+
+    Splits the video at keyframe boundaries, applies static or interpolated
+    crop+scale per segment, then concatenates them back.  Much faster than
+    zoompan because crop+scale is a trivial per-frame operation.
+    """
+    if not keyframes or len(keyframes) < 2:
+        log("Phase E: skipping zoom (no keyframes)")
+        return video_path
+
+    fc_expr = _build_zoom_filter_complex(keyframes)
+    if not fc_expr:
+        return video_path
+
+    # Write filter_complex to a script file (can be very long)
+    filter_script = assembly_dir / "zoom-filter.txt"
+    filter_script.write_text(fc_expr, encoding="utf-8")
+
+    zoomed_path = assembly_dir / f"{video_path.stem}-zoomed{video_path.suffix}"
+    cmd = [
+        FFMPEG_BIN, "-y",
+        "-i", str(video_path),
+        "-/filter_complex", str(filter_script),
+        "-map", "[vout]",
+        "-map", "[aout]",
+        "-c:v", "libx264",
+        "-preset", "medium",
+        "-crf", "20",
+        "-c:a", "aac",
+        "-b:a", "192k",
+        "-movflags", "+faststart",
+        str(zoomed_path),
+    ]
+    run_cmd(cmd, "Apply zoom/pan virtual camera")
+
+    # Replace original with zoomed version (may cross filesystem boundaries)
+    shutil.copy2(zoomed_path, video_path)
+    zoomed_path.unlink(missing_ok=True)
+    log(f"Phase E: zoom/pan applied ({ffprobe_duration(video_path):.2f}s)")
+    return video_path
+
+
+def _maybe_apply_zoom(
+    video_path: Path,
+    spec: dict[str, Any],
+    results: list["StepResult"],
+    args: argparse.Namespace,
+    assembly_dir: Path,
+) -> Path:
+    """Apply zoom/pan if enabled via --zoom flag."""
+    zoom_mode = getattr(args, "zoom", "off")
+    if zoom_mode == "off":
+        return video_path
+
+    log(f"Phase E: generating camera path (zoom={zoom_mode})")
+    total_duration = ffprobe_duration(video_path)
+    keyframes = build_camera_path(spec, results, total_duration)
+
+    if zoom_mode == "mobile":
+        # Increase zoom levels for smaller screens
+        for kf in keyframes:
+            if kf.zoom > 1.0:
+                kf.zoom = min(kf.zoom * 1.15, 3.0)
+
+    log(f"Phase E: {len(keyframes)} keyframes over {total_duration:.1f}s")
+    return apply_zoom_pan(video_path, keyframes, assembly_dir)
+
 def _coerce_audio_paths(step_audio: dict[str, Any]) -> dict[str, Path]:
     audio_paths: dict[str, Path] = {}
     for step_id, audio_info in step_audio.items():
@@ -1507,6 +1819,12 @@ def parse_args() -> argparse.Namespace:
         default=1200.0,
         help="Max seconds to wait for Colab NVENC worker (default: 1200)",
     )
+    parser.add_argument(
+        "--zoom",
+        choices=["off", "auto", "mobile"],
+        default="off",
+        help="Dynamic zoom/pan: 'off' (disabled), 'auto' (standard zoom), 'mobile' (stronger zoom for phones)",
+    )
     return parser.parse_args()
 
 
@@ -1571,6 +1889,10 @@ def main() -> int:
             if not args.dry_run:
                 final_path = assemble_mixed_video(spec, results, step_audio, dirs)
                 if final_path is not None:
+                    final_path = _maybe_apply_zoom(
+                        final_path, spec, results, args, dirs["assembly"]
+                    )
+                if final_path is not None:
                     final_path = _maybe_nvenc_reencode(
                         final_path, args, dirs["assembly"]
                     )
@@ -1610,6 +1932,10 @@ def main() -> int:
                     final_path = assemble_continuous_video(spec, results, dirs)
                 else:
                     final_path = assemble_video(spec, results, dirs)
+                if final_path is not None:
+                    final_path = _maybe_apply_zoom(
+                        final_path, spec, results, args, dirs["assembly"]
+                    )
                 if final_path is not None:
                     final_path = _maybe_nvenc_reencode(
                         final_path, args, dirs["assembly"]
