@@ -7,7 +7,9 @@
     "build": "npx remotion bundle",
     "render:intro": "npx remotion render BubbleSortIntro out/bubblesort-intro.mp4",
     "render:outro": "npx remotion render BubbleSortOutro out/bubblesort-outro.mp4",
-    "render:all": "npm run render:intro && npm run render:outro"
+    "render:arrays-intro": "npx remotion render ArraysTotalIntro out/arrays-total-intro.mp4",
+    "render:arrays-outro": "npx remotion render ArraysTotalOutro out/arrays-total-outro.mp4",
+    "render:all": "npm run render:intro && npm run render:outro && npm run render:arrays-intro && npm run render:arrays-outro"
   },
   "dependencies": {
     "@remotion/cli": "4.0.296",
