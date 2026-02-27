@@ -187,14 +187,50 @@ Add these optional fields to your spec's `settings` object:
 | `f5_seed` | No | random | Seed for reproducible output |
 | `f5_nfe_step` | No | 32 | Flow-matching steps (higher = better quality, slower. Range: 1-128) |
 
-### Preparing Reference Audio
+### Preparing Reference Audio (CRITICAL)
 
-For best F5-TTS results:
-- Record **10-15 seconds** of clear speech
-- Use a quiet environment (no background noise)
-- Speak naturally in the tone you want for tutorials
-- Save as WAV (16kHz+ sample rate)
-- Transcribe the audio exactly into `f5_ref_text`
+F5-TTS internally preprocesses reference audio and clips it to **max 12 seconds**.
+If your reference audio exceeds 12s, the audio gets clipped but `ref_text` stays full-length,
+causing a mismatch that makes reference text fragments bleed into generated output.
+
+**Requirements:**
+
+| Requirement | Why |
+|---|---|
+| Duration: **6-12 seconds** (sweet spot: 8-10s) | F5-TTS clips >12s internally, causing audio/text mismatch |
+| Content **unrelated** to tutorial narration | Semantically similar ref_text bleeds into generated speech |
+| `f5_ref_text` matches audio **exactly** | Mismatched text causes model to generate ref_text fragments in output |
+| WAV format, 16kHz+ sample rate | Model resamples to 24kHz internally |
+| Clear speech, no background noise | Noise in reference transfers to all generated audio |
+
+**Generating a reference clip with Kokoro (recommended):**
+
+```python
+import kokoro_onnx
+import soundfile as sf
+
+# Use NEUTRAL content unrelated to your tutorials
+ref_text = (
+    "The morning light filtered through the curtains, casting warm golden "
+    "patterns across the wooden floor. Outside, a gentle rain had begun to fall."
+)
+
+kokoro = kokoro_onnx.Kokoro(
+    "~/.openclaw/models/kokoro-v1.0.onnx",
+    "~/.openclaw/models/voices-v1.0.bin"
+)
+samples, sr = kokoro.create(ref_text, voice="am_michael", speed=1.0, lang="en-us")
+sf.write("reference-voice.wav", samples, sr)  # Should be 8-12s
+```
+
+**Common mistakes:**
+
+| Mistake | Symptom | Fix |
+|---|---|---|
+| Reference >12s | Fragments of ref_text appear in all generated audio | Keep reference 6-12s |
+| ref_text about programming/tutorials | Phrases like "implement it together" scattered through output | Use completely unrelated content (weather, nature, fiction) |
+| ref_text doesn't match audio | Model generates ref_text words mixed into narration | Transcribe reference audio exactly |
+| No ref_text provided | Model auto-transcribes (Whisper), may be inaccurate | Always provide explicit ref_text |
 
 ### Error Handling
 

@@ -20,6 +20,8 @@
 12. [FFmpeg Overlay Concatenation](#12-ffmpeg-overlay-concatenation)
 13. [Remotion Integration](#13-remotion-integration)
 14. [Mixed Slides and Demo Workflow](#14-mixed-slides-and-demo-workflow)
+15. [Colab GPU TTS Offloading](#15-colab-gpu-tts-offloading)
+16. [F5-TTS Voice Cloning](#16-f5-tts-voice-cloning)
 ---
 
 ## 1. Terminal Interaction
@@ -812,6 +814,145 @@ ffprobe slide-001.png  # Verify format
 
 ---
 
-> **Document version:** 2025-02-25
-> **Last updated:** Added mixed slides/demo workflow lessons and Gamma API integration
+## 15. Colab GPU TTS Offloading
+
+> Lessons from offloading TTS generation to Google Colab T4 GPU via Google Drive sync.
+
+### Problem: Local CPU TTS is adequate but limits model choice
+
+Kokoro-82M runs well on CPU (RTF ~0.5), but larger voice cloning models like F5-TTS (~300M params) need GPU acceleration.
+
+### Discovery: Small models are SLOWER on GPU
+
+Kokoro-82M benchmarks:
+- Local CPU (Arch Linux): RTF 0.50
+- Colab T4 GPU: RTF 0.92
+
+The 82M parameter model is too small to overcome CUDA kernel launch overhead. GPU offloading only makes sense for models >200M params.
+
+### Google Drive sync latency
+
+Drive sync adds 10-50 seconds latency in each direction. Key settings:
+
+```bash
+# rclone mount MUST use these flags for responsive polling
+rclone mount gdrive: ~/gdrive \
+  --vfs-cache-mode writes \
+  --dir-cache-time 5s \
+  --poll-interval 5s \
+  --daemon
+```
+
+Without `--dir-cache-time 5s`, rclone caches directory listings for 5 minutes (default), making job detection extremely slow.
+
+The dispatcher accounts for this with `sync_delay=10s` (wait after writing request.json) and `poll_interval=5s` (check for done.marker).
+
+### Colab runtime considerations
+
+| Issue | Solution |
+|---|---|
+| Free tier idle timeout (~90 min) | Keep Colab tab visible/focused |
+| Runtime disconnects silently | Check watcher output before dispatching |
+| `model_type` API changed in f5-tts | Use `model="F5TTS_v1_Base"` not `model_type="F5-TTS"` |
+| `torch.cuda.get_device_properties(0).total_mem` removed | Use `.total_memory` instead |
+
+---
+
+## 16. F5-TTS Voice Cloning
+
+> Hard-won lessons about F5-TTS reference audio preparation. **Read this before generating voice-cloned narration.**
+
+### How F5-TTS works internally
+
+F5-TTS generates speech by **concatenating** reference text with generation text, generating the full audio sequence, then slicing off the reference portion:
+
+```python
+# Inside F5-TTS infer_batch_process():
+text_list = [ref_text + gen_text]          # Concatenate texts
+# ... generate full mel spectrogram ...
+generated = generated[:, ref_audio_len:, :]  # Slice off reference portion
+```
+
+This means the model sees ref_text + gen_text as one continuous utterance. The slicing point is determined by `ref_audio_len` (the reference audio duration in mel frames).
+
+### CRITICAL: Reference audio is clipped to 12 seconds
+
+In `preprocess_ref_audio_text()`, F5-TTS clips reference audio:
+
+```python
+# F5-TTS source code (utils_infer.py):
+if len(aseg) > 12000:  # 12 seconds in milliseconds
+    aseg = aseg[:12000]
+    show_info("Audio is over 12s, clipping short.")
+```
+
+**The text is NOT clipped.** If you provide 26s of audio with matching text, the audio gets clipped to 12s but the full 26s of text is still used. This creates a mismatch between audio length and text length, causing the model to generate reference text fragments in the output.
+
+### Problem: Reference text bleeding into generated audio
+
+**Symptom:** Phrases from `ref_text` appear scattered throughout all generated audio steps. For example, if ref_text contains "we'll implement it together", that phrase appears in every step's audio.
+
+**Root cause (ranked by severity):**
+
+1. **Audio/text length mismatch** (most common): Reference audio >12s gets clipped, but ref_text stays full length. The slicing point (`ref_audio_len`) no longer matches where the reference text ends in the generated sequence.
+
+2. **Semantic overlap**: Even with correct lengths, if ref_text content is topically similar to gen_text (e.g., both about programming), the model's attention mechanism blends them.
+
+3. **Inaccurate ref_text**: If ref_text doesn't match the actual audio content, the model's text-audio alignment is wrong, causing unpredictable output.
+
+### Solution: Reference audio requirements
+
+| Requirement | Value | Why |
+|---|---|---|
+| Duration | **6-12 seconds** (sweet spot: 8-10s) | Stays under 12s clip threshold; >6s gives model enough voice characteristics |
+| Content | **Completely unrelated** to tutorials | Prevents semantic bleeding (no programming, no tutorials, no technical content) |
+| Text accuracy | **Exact transcription** of audio | Ensures audio/text alignment is correct |
+| Format | WAV, any sample rate >= 16kHz | F5-TTS resamples to 24kHz internally |
+
+### What works: Generating reference with Kokoro
+
+Use Kokoro (local CPU) to generate a consistent, clean reference clip:
+
+```python
+import kokoro_onnx, soundfile as sf
+
+# NEUTRAL content - weather, nature, fiction. NOT programming/tutorials.
+ref_text = (
+    "The morning light filtered through the curtains, casting warm golden "
+    "patterns across the wooden floor. Outside, a gentle rain had begun to fall."
+)
+
+kokoro = kokoro_onnx.Kokoro(
+    "~/.openclaw/models/kokoro-v1.0.onnx",
+    "~/.openclaw/models/voices-v1.0.bin"
+)
+samples, sr = kokoro.create(ref_text, voice="am_michael", speed=1.0, lang="en-us")
+sf.write("reference-voice.wav", samples, sr)
+# Result: 9.8s at 24kHz - perfect for F5-TTS
+```
+
+### Speed parameter behavior
+
+F5-TTS `speed` parameter interacts with reference audio length. With a properly-sized (8-10s) reference and `speed=1.0`, output duration is approximately:
+
+```
+output_duration ~ ref_audio_len / ref_text_len * gen_text_len / speed
+```
+
+If output is too fast (narration sounds rushed), decrease `speech_speed` in the spec. If too slow, increase it. The relationship is roughly linear.
+
+### Debugging checklist
+
+If F5-TTS output sounds wrong:
+
+1. **Phrases from ref_text in output?** -> Reference audio >12s (check duration) or ref_text semantically overlaps with narration
+2. **Audio is 2x too fast?** -> Reference audio/text mismatch from clipping. Regenerate with 8-10s clip
+3. **Robotic/garbled quality?** -> Increase `nfe_step` (32->64), or use longer reference audio (up to 12s)
+4. **Abrupt start/end?** -> F5-TTS adds minimal silence. Post-process with fade-in/out if needed
+5. **Different voice per step?** -> Set a fixed `seed` in spec settings for consistency
+
+---
+
+> **Document version:** 2026-02-27
+> **Last updated:** Added Colab GPU offloading and F5-TTS voice cloning lessons
 

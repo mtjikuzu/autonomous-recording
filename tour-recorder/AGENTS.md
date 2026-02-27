@@ -346,3 +346,66 @@ The pipeline auto-detects spec format:
 **Option 3: Placeholder (fallback)**
 - Don't set API key
 - Pipeline auto-generates simple text-based slides using PIL
+
+## Colab GPU TTS Offloading
+
+> Offload TTS narration to Google Colab T4 GPU for higher-quality voice synthesis.
+
+### Architecture overview:
+
+- Local machine dispatches jobs to Google Drive
+- Colab worker polls for jobs, generates WAVs, writes done.marker
+- Local copies WAVs back, continues pipeline
+- Communication bridge: Google Drive via rclone mount
+
+### Three TTS Backends
+
+| Backend | Flag | Model | Speed | Quality | Use Case |
+|---|---|---|---|---|---|
+| local | --tts-backend local | Kokoro 82M CPU | RTF ~0.5 | Good robotic | Default/fast iteration |
+| colab | --tts-backend colab | Kokoro 82M GPU | RTF ~0.9 | Good robotic | NOT recommended (CPU is faster for this small model) |
+| colab-f5 | --tts-backend colab-f5 | F5-TTS ~300M GPU | RTF ~0.8 | Near-realistic voice cloning | Production narration |
+
+### Key Files
+
+| File | Purpose |
+|---|---|
+| colab/colab_dispatcher.py | Local-side dispatchers (ColabTTSDispatcher, ColabF5TTSDispatcher) |
+| colab/tts_worker.ipynb | Kokoro GPU Colab notebook |
+| colab/f5_tts_worker.ipynb | F5-TTS voice cloning Colab notebook |
+| colab/README.md | Detailed setup and usage docs |
+
+### F5-TTS Spec Settings
+
+```json
+{
+  "settings": {
+    "f5_ref_audio": "voice-refs/myvoice.wav",
+    "f5_ref_text": "The quick brown fox jumps over the lazy dog.",
+    "f5_nfe_step": 32
+  }
+}
+```
+
+### Complete Workflow
+
+1. Mount Google Drive locally: `rclone mount gdrive: ~/gdrive --vfs-cache-mode writes --dir-cache-time 5s --poll-interval 5s --daemon`
+2. Create directories: `~/gdrive/autonomous-recording/tts-jobs/`, `f5-tts-jobs/`, `voice-refs/`
+3. Copy notebook to Drive, open in Colab, set T4 GPU, Run All
+4. Generate reference voice (for F5-TTS): python script using Kokoro to create 8-12s WAV
+5. Run pipeline: `python record-tour.py spec.json --tts-backend colab-f5`
+6. Pipeline dispatches job → Colab generates → Pipeline copies back → continues
+
+### Critical Requirements
+
+| Requirement | Why |
+|---|---|
+| Reference audio MUST be 6-12 seconds | F5-TTS clips audio >12s internally, causing ref_text/audio mismatch and text bleeding |
+| Reference text MUST match audio exactly | Mismatched text causes generated audio to contain ref_text fragments |
+| Reference content MUST be unrelated to narration | Semantically similar ref_text bleeds into generated output |
+| rclone needs `--dir-cache-time 5s --poll-interval 5s` | Default cache is too slow for responsive job detection (10-50s Drive sync latency) |
+| Google Drive sync adds 10-50s latency each way | Dispatcher sync_delay=10s and poll_interval=5s account for this |
+
+### Discovery: Kokoro is faster on CPU than Colab T4
+
+Note that Kokoro-82M (RTF 0.50 local CPU vs 0.92 Colab T4) is too small to benefit from GPU acceleration. CUDA overhead hurts. F5-TTS (~300M params) is genuinely GPU-bound and benefits from T4.
