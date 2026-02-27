@@ -11,10 +11,11 @@ build/
 venv/
 env/
 
-# Output videos — exclude all except the two published tutorials
+# Output videos — exclude all except published tutorials
 output/*.mp4
 !output/bubblesort-tutorial.mp4
 !output/functions-tutorial.mp4
+!output/arrays-total-tutorial.mp4
 
 # Temp / uploads
 /tmp/
