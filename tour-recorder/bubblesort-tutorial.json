@@ -14,7 +14,10 @@
     "default_step_timeout": 30,
     "max_retries_per_step": 2,
     "browser": "chromium",
-    "mode": "continuous"
+    "mode": "continuous",
+    "f5_ref_audio": "~/gdrive/autonomous-recording/voice-refs/reference-voice.wav",
+    "f5_ref_text": "Welcome to this programming tutorial. Today we'll explore one of the most fundamental sorting algorithms in computer science. I'll walk you through the concept step by step, and then we'll implement it together in Java.",
+    "f5_nfe_step": 32
   },
   "pre_setup": [
     "mkdir -p /home/mtjikuzu/dev/autonomous-recording/workspaces/java-tutorial",
