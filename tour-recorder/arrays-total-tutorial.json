@@ -1,0 +1,173 @@
+{
+  "meta": {
+    "title": "Java Array Sum Tutorial - Calculating Total of All Elements",
+    "description": "Guided coding walkthrough teaching how to sum array elements in Java: for loop, enhanced for-each, edge cases, and a reusable utility method",
+    "target_duration_seconds": 420,
+    "max_duration_seconds": 540
+  },
+  "settings": {
+    "viewport": { "width": 1920, "height": 1080 },
+    "video_size": { "width": 1920, "height": 1080 },
+    "voice": "am_michael",
+    "speech_speed": 1.0,
+    "language": "en-us",
+    "default_step_timeout": 30,
+    "max_retries_per_step": 2,
+    "browser": "chromium",
+    "mode": "continuous",
+    "f5_ref_audio": "~/gdrive/autonomous-recording/voice-refs/reference-voice-short.wav",
+    "f5_ref_text": "The morning light filtered through the curtains, casting warm golden patterns across the wooden floor. Outside, a gentle rain had begun to fall.",
+    "f5_nfe_step": 32
+  },
+  "pre_setup": [
+    "mkdir -p /home/mtjikuzu/dev/autonomous-recording/workspaces/java-arrays",
+    "rm -f /home/mtjikuzu/dev/autonomous-recording/workspaces/java-arrays/TotalArrayElements.java /home/mtjikuzu/dev/autonomous-recording/workspaces/java-arrays/TotalArrayElements.class",
+    "touch /home/mtjikuzu/dev/autonomous-recording/workspaces/java-arrays/TotalArrayElements.java"
+  ],
+  "steps": [
+    {
+      "id": "open-workspace",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-arrays",
+      "narration": "Hey everyone, welcome back. Today we are tackling one of the most fundamental operations you will ever perform on an array, finding the total sum of all its elements. It sounds simple, and honestly it is, but the patterns you learn here show up everywhere. Calculating averages, running totals, aggregating data from a database, even machine learning boils down to summing numbers at some level. We are going to build this up step by step, starting with the classic for loop approach, then the cleaner for-each syntax, and finally we will wrap it all in a reusable method. Let us get into it.",
+      "actions": [
+        { "type": "wait_for_load" },
+        { "type": "wait_for_selector", "selector": ".monaco-workbench", "state": "visible", "timeout": 30000 },
+        { "type": "pause", "duration": 2.0 },
+        { "type": "dismiss_popups" },
+        { "type": "pause", "duration": 1.0 },
+        { "type": "press_key", "key": "Escape" },
+        { "type": "pause", "duration": 0.3 },
+        { "type": "press_key", "key": "Escape" },
+        { "type": "pause", "duration": 0.3 },
+        { "type": "press_key", "key": "Escape" },
+        { "type": "pause", "duration": 0.5 },
+        { "type": "command_palette", "command": "View: Close All Editors" },
+        { "type": "pause", "duration": 0.5 },
+        { "type": "hide_secondary_sidebar" },
+        { "type": "pause", "duration": 1.0 }
+      ],
+      "assertions": [
+        { "type": "url_contains", "value": "127.0.0.1:8080" }
+      ]
+    },
+    {
+      "id": "open-file",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-arrays",
+      "narration": "Let us open our file. I have an empty TotalArrayElements dot java ready. We will use Quick Open with Control P, type the filename, and we are in. This keyboard shortcut alone will save you hours over the course of a project.",
+      "actions": [
+        { "type": "press_key", "key": "Escape" },
+        { "type": "pause", "duration": 0.3 },
+        { "type": "press_key", "key": "Control+p" },
+        { "type": "pause", "duration": 0.8 },
+        { "type": "type_text", "text": "TotalArrayElements.java", "delay": 40 },
+        { "type": "pause", "duration": 0.5 },
+        { "type": "press_key", "key": "Enter" },
+        { "type": "pause", "duration": 2.0 },
+        { "type": "press_key", "key": "Escape" },
+        { "type": "pause", "duration": 0.5 },
+        { "type": "wait_for_selector", "selector": ".monaco-editor .view-lines", "state": "visible", "timeout": 10000 },
+        { "type": "hide_secondary_sidebar" },
+        { "type": "focus_editor" },
+        { "type": "select_all_and_delete" }
+      ]
+    },
+    {
+      "id": "type-class-and-basic-sum",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-arrays",
+      "narration": "We start with our class declaration and a static method called sumWithForLoop. This is the most explicit way to add up array elements. We declare an accumulator variable called total, initialize it to zero, and then loop through every index from zero to arr dot length minus one. On each iteration, we add the current element to our running total. Think of it like a cashier scanning items at checkout. Each item gets added to the register total one by one. The key insight is that total acts as our memory between iterations. Without it, we would lose track of the running sum.",
+      "actions": [
+        { "type": "focus_editor" },
+        { "type": "type_text", "delay": 40, "text": "public class TotalArrayElements {\n\n    public static int sumWithForLoop(int[] arr) {\n        int total = 0;\n        for (int i = 0; i < arr.length; i++) {\n            total += arr[i];\n        }\n        return total;\n    }\n\n" }
+      ]
+    },
+    {
+      "id": "type-foreach-sum",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-arrays",
+      "narration": "Now let us write the same logic but with a for-each loop, also called the enhanced for loop. Instead of managing an index variable ourselves, Java hands us each element directly. The syntax is for int num colon arr, which reads as for each integer num in arr. This is cleaner and less error-prone because there is no index to accidentally go out of bounds with. You should reach for the for-each loop whenever you do not actually need the index. If you just need the values, let Java handle the bookkeeping for you.",
+      "actions": [
+        { "type": "pause", "duration": 0.3 },
+        { "type": "type_text", "delay": 40, "text": "    public static int sumWithForEach(int[] arr) {\n        int total = 0;\n        for (int num : arr) {\n            total += num;\n        }\n        return total;\n    }\n\n" }
+      ]
+    },
+    {
+      "id": "type-safe-sum",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-arrays",
+      "narration": "Here is something most tutorials skip, handling edge cases. What happens if someone passes in a null array or an empty array? Our previous methods would crash with a NullPointerException on null, or silently return zero on empty, which might be fine or might hide a bug depending on your use case. This safeSum method checks for both. If the array is null or has zero length, we return zero immediately. This is called a guard clause, and it is a defensive programming technique that senior developers use all the time. You validate your inputs before doing any real work, so the rest of the method can assume everything is clean.",
+      "actions": [
+        { "type": "pause", "duration": 0.3 },
+        { "type": "type_text", "delay": 40, "text": "    public static int safeSum(int[] arr) {\n        if (arr == null || arr.length == 0) {\n            return 0;\n        }\n        int total = 0;\n        for (int num : arr) {\n            total += num;\n        }\n        return total;\n    }\n\n" }
+      ]
+    },
+    {
+      "id": "type-main-basic-tests",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-arrays",
+      "narration": "Time to write our main method and test everything. First, let us create a sample array with the numbers one through six. The sum should be twenty one, which is one plus two plus three plus four plus five plus six. We will call both our for-loop version and our for-each version to confirm they produce the same result. I am printing the method name alongside the result so we can easily tell which output came from which method.",
+      "actions": [
+        { "type": "pause", "duration": 0.3 },
+        { "type": "type_text", "delay": 40, "text": "    public static void main(String[] args) {\n        int[] numbers = {1, 2, 3, 4, 5, 6};\n\n        System.out.println(\"Array: {1, 2, 3, 4, 5, 6}\");\n        System.out.println(\"sumWithForLoop:  \" + sumWithForLoop(numbers));\n        System.out.println(\"sumWithForEach:  \" + sumWithForEach(numbers));\n\n" }
+      ]
+    },
+    {
+      "id": "type-main-edge-cases",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-arrays",
+      "narration": "Now let us test the edge cases to make sure our safeSum method handles them gracefully. We will test with an empty array and with null. Both should return zero without throwing any errors. We will also test safeSum with our original numbers array to confirm it works identically to the other methods for normal input. This is a habit worth building early. Test not just the happy path, but the weird and boundary cases too. Real-world data is messy, and your code needs to handle it. Let me close out main and the class.",
+      "actions": [
+        { "type": "pause", "duration": 0.3 },
+        { "type": "type_text", "delay": 40, "text": "        int[] empty = {};\n        int[] nullArr = null;\n\n        System.out.println(\"\\nsafeSum({1..6}):  \" + safeSum(numbers));\n        System.out.println(\"safeSum(empty):   \" + safeSum(empty));\n        System.out.println(\"safeSum(null):    \" + safeSum(nullArr));\n    }\n}\n" },
+        { "type": "pause", "duration": 1.0 }
+      ]
+    },
+    {
+      "id": "save-file",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-arrays",
+      "narration": "Quick save with Control S before we compile. Always save. It is one keystroke that prevents the classic head-scratcher of why did my changes not take effect.",
+      "actions": [
+        { "type": "focus_editor" },
+        { "type": "press_key", "key": "Control+s" },
+        { "type": "pause", "duration": 1.0 }
+      ]
+    },
+    {
+      "id": "open-terminal-and-compile",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-arrays",
+      "narration": "Let us open the terminal and compile with javac. Remember, no output from javac means zero errors. The compiler translates our human-readable Java into bytecode that the JVM can execute. If you do see an error, read it carefully. Java error messages usually tell you exactly which line the problem is on.",
+      "actions": [
+        { "type": "command_palette", "command": "Terminal: Create New Terminal" },
+        { "type": "pause", "duration": 3.0 },
+        { "type": "terminal_type", "text": "cd /home/mtjikuzu/dev/autonomous-recording/workspaces/java-arrays && javac TotalArrayElements.java", "press_enter": true },
+        { "type": "pause", "duration": 3.0 }
+      ]
+    },
+    {
+      "id": "run-program",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-arrays",
+      "narration": "Compiled cleanly. Now let us run it. Watch the output. First you should see our array printed, then the for-loop sum showing twenty one, and the for-each sum also showing twenty one. Same answer, two different approaches. Then the safeSum results: twenty one for the normal array, zero for the empty array, and zero for null. No exceptions, no crashes, just clean, predictable behavior. That is what defensive programming gets you.",
+      "actions": [
+        { "type": "terminal_type", "text": "java TotalArrayElements", "press_enter": true },
+        { "type": "pause", "duration": 4.0 }
+      ]
+    },
+    {
+      "id": "closing",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-arrays",
+      "narration": "And there we go, everything working as expected. Let me recap what we covered. The classic indexed for loop for summing elements when you need position awareness. The for-each loop for cleaner, more readable code when you only need the values. And guard clauses for handling null and empty arrays gracefully. These three patterns together give you a rock-solid foundation for working with arrays in any language, not just Java. The accumulator pattern, which is what total equals zero plus equals is, shows up in everything from calculating averages to building strings to reducing datasets. Master it once, and you will recognize it everywhere. See you in the next one.",
+      "actions": [
+        { "type": "focus_editor" },
+        { "type": "highlight_lines", "from_line": 1, "to_line": 30 },
+        { "type": "pause", "duration": 3.0 }
+      ]
+    }
+  ],
+  "output": {
+    "path": "~/dev/autonomous-recording/output/arrays-total-tutorial.mp4",
+    "format": "mp4",
+    "video_codec": "libx264",
+    "video_preset": "medium",
+    "video_crf": 20,
+    "audio_codec": "aac",
+    "audio_bitrate": "192k",
+    "loudnorm": true,
+    "intro_clip": "~/dev/autonomous-recording/overlays/out/arrays-total-intro.mp4",
+    "outro_clip": "~/dev/autonomous-recording/overlays/out/arrays-total-outro.mp4"
+  }
+}
