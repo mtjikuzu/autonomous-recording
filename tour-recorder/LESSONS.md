@@ -22,6 +22,7 @@
 14. [Mixed Slides and Demo Workflow](#14-mixed-slides-and-demo-workflow)
 15. [Colab GPU TTS Offloading](#15-colab-gpu-tts-offloading)
 16. [F5-TTS Voice Cloning](#16-f5-tts-voice-cloning)
+17. [NVENC GPU Video Encoding on Colab](#17-nvenc-gpu-video-encoding-on-colab)
 ---
 
 ## 1. Terminal Interaction
@@ -985,6 +986,67 @@ If F5-TTS output sounds wrong:
 
 ---
 
-> **Document version:** 2026-02-27
-> **Last updated:** Added Colab GPU offloading and F5-TTS voice cloning lessons
+## 17. NVENC GPU Video Encoding on Colab
 
+> Lessons from offloading video encoding to Google Colab T4 NVENC hardware encoder.
+
+### Architecture Decision: Re-encode vs Full Assembly Offload
+
+Two approaches were considered:
+
+| Approach | Pros | Cons |
+|---|---|---|
+| **Full assembly offload** (upload raw clips + audio, assemble on Colab) | Single round-trip, Colab does all encoding | Complex FFmpeg filter_complex with multiple audio streams hard to decompose into job protocol; large file transfers |
+| **Re-encode only** (assemble locally with libx264, re-encode with NVENC on Colab) | Simple job protocol (single transcode op); local assembly still works if Colab fails | Double-encode (local then NVENC); extra Drive round-trip for assembled video |
+
+**Chosen: Re-encode only.** The continuous mode assembly uses complex `filter_complex` with per-step audio delays and `amix`. Reproducing this on Colab would require shipping the full FFmpeg command, which defeats the purpose of a simple job protocol.
+
+### NVENC Preset Equivalence
+
+| libx264 | h264_nvenc | Notes |
+|---|---|---|
+| `-preset medium -crf 20` | `-preset p7 -rc vbr -cq 20 -b:v 0` | p7 = max quality; CQ mode is closest to CRF |
+| `-preset fast -crf 23` | `-preset p4 -rc vbr -cq 23 -b:v 0` | p4 = balanced speed/quality |
+
+### NVENC Quality Considerations
+
+NVENC at CQ=20 produces slightly different quality than libx264 CRF=20:
+- NVENC tends to be ~10-20% larger file sizes at equivalent visual quality
+- For tutorial videos (mostly static code editor + talking), NVENC quality is indistinguishable from libx264
+- Hardware encoding can't match the psychovisual optimization of libx264's `--tune` options
+
+### Colab FFmpeg NVENC Availability
+
+The default Colab FFmpeg may NOT have NVENC support. The encode_worker.ipynb handles this by:
+1. Checking `ffmpeg -encoders | grep h264_nvenc`
+2. Attempting to install `nvidia-cuda-toolkit` if NVENC missing
+3. Warning if NVENC is still unavailable (some Colab runtimes have it, some don't)
+
+### Timing: NVENC Re-encode Placement in Pipeline
+
+NVENC re-encode runs **after** local assembly but **before** overlay concatenation:
+```
+TTS → Capture → assemble_*_video() → _maybe_nvenc_reencode() → apply_overlays() → Final
+                     (libx264)            (h264_nvenc on Colab)     (stream copy concat)
+```
+
+This is intentional: `apply_overlays()` uses stream-copy concat (`-c copy`), which requires all clips to have matching codec/format. Since NVENC output is still h264, the concat works.
+
+### File Transfer Overhead
+
+For a 6-minute tutorial at 1080p30:
+- Assembled video size: ~60-100 MB
+- Google Drive upload: 10-30s
+- NVENC encoding: 5-10s (vs 30-60s for libx264)
+- Google Drive download: 10-30s
+- **Total NVENC offload: ~30-70s** vs **libx264 local: ~30-60s**
+
+For short videos (<2 min), the Drive transfer overhead may negate the encoding speed gain. NVENC offload is most valuable for:
+- Videos >5 minutes
+- Batch processing multiple tutorials
+- Machines with very slow CPUs
+
+---
+
+> **Document version:** 2026-02-27
+> **Last updated:** Added NVENC GPU encoding lessons

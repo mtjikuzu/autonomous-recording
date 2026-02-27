@@ -252,12 +252,93 @@ sf.write("reference-voice.wav", samples, sr)  # Should be 8-12s
 - The model is cached on Drive — subsequent runs skip download
 - Use `--colab-timeout` for large specs with many steps
 
+## NVENC GPU Video Encoding
+
+Offload the final video encoding pass to the T4's hardware NVENC encoder for 5-10x speedup over CPU `libx264`.
+
+### How It Works
+
+```
+Local Machine                           Google Colab T4
+─────────────                           ───────────────
+record-tour.py                          encode_worker.ipynb
+  --encode-backend colab-nvenc            ├─ Mount Google Drive
+  │                                       ├─ Watch encode-jobs/ for requests
+  ├─ Assemble video locally (libx264)     │
+  ├─ Copy assembled MP4 ──► GDrive ──►    ├─ Re-encode with h264_nvenc (GPU)
+  ├─ Wait for done.marker                 ├─ Write output + done.marker
+  ├─ Copy result back   ◄── GDrive ◄──    │
+  ├─ Apply overlays (local)               │
+  └─ Final MP4                            │
+```
+
+### Setup
+
+**1. Colab Notebook:**
+1. Open `colab/encode_worker.ipynb` in Google Colab
+2. Set runtime to **GPU → T4** (Runtime → Change runtime type)
+3. Run all cells — the last code cell starts the job watcher loop
+
+**2. Run the Pipeline:**
+```bash
+# Re-encode final video with NVENC on Colab T4
+python record-tour.py tutorial.json --encode-backend colab-nvenc
+
+# With custom Drive path
+python record-tour.py tutorial.json \
+  --encode-backend colab-nvenc \
+  --nvenc-drive-path ~/gdrive/autonomous-recording/encode-jobs
+
+# With longer timeout (for large videos)
+python record-tour.py tutorial.json \
+  --encode-backend colab-nvenc \
+  --nvenc-timeout 1800
+
+# Combine with F5-TTS voice cloning
+python record-tour.py tutorial.json \
+  --tts-backend colab-f5 \
+  --encode-backend colab-nvenc
+```
+
+### Environment Variables
+
+```bash
+export COLAB_NVENC_DRIVE_PATH=~/gdrive/autonomous-recording/encode-jobs
+```
+
+### NVENC Encoding Settings
+
+| Setting | Value | Equivalent |
+|---------|-------|------------|
+| Codec | `h264_nvenc` | `libx264` |
+| Preset | `p7` (max quality) | `medium` |
+| Rate control | VBR with CQ=20 | CRF=20 |
+| HW accel | `-hwaccel cuda` (decode) | CPU decode |
+
+### Job Protocol
+
+Same Google Drive sync pattern as TTS offloading:
+
+1. **Local** copies assembled video + writes `request.json` to `encode-jobs/<job-id>/`
+2. **Colab** detects job, re-encodes with NVENC, writes output + `done.marker`
+3. **Local** detects completion, copies NVENC output back, continues pipeline
+
+### When to Use
+
+| Scenario | Recommendation |
+|----------|----------------|
+| Short videos (<2 min) | Skip — local libx264 is fast enough |
+| Medium videos (2-8 min) | Optional — saves 30-60s encode time |
+| Long videos (8+ min) | Recommended — NVENC is 5-10x faster |
+| Batch processing multiple tutorials | Recommended |
+
 ## Files
 
 | File | Description |
 |------|-------------|
 | `tts_worker.ipynb` | Kokoro GPU Colab notebook |
 | `f5_tts_worker.ipynb` | F5-TTS voice cloning Colab notebook |
-| `colab_dispatcher.py` | Local-side job dispatch (`ColabTTSDispatcher` + `ColabF5TTSDispatcher`) |
+| `encode_worker.ipynb` | NVENC GPU video encoding Colab notebook |
+| `colab_dispatcher.py` | Local-side dispatchers (`ColabTTSDispatcher`, `ColabF5TTSDispatcher`, `ColabNVENCDispatcher`) |
 | `__init__.py` | Python package marker |
 | `README.md` | This file |

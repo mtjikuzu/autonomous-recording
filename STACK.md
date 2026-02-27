@@ -78,10 +78,16 @@ TTS is **pre-rendered** before recording begins. Each step's narration is conver
 | FFmpeg | n8.0.1 | Clip assembly, audio mixing, loudnorm, encoding |
 | FFprobe | n8.0.1 | Duration probing per clip |
 
-**Output encoding settings:**
+**Output encoding settings (local, default):**
 - Video codec: `libx264`, preset `medium`, CRF `20`
 - Audio codec: `aac`, bitrate `192k`
 - Loudness normalization: enabled (`loudnorm` filter)
+
+**Output encoding settings (Colab NVENC, `--encode-backend colab-nvenc`):**
+- Video codec: `h264_nvenc`, preset `p7` (max quality), CQ `20` (VBR)
+- Audio codec: `aac`, bitrate `192k`
+- Hardware acceleration: `-hwaccel cuda` for decode
+- Offloaded to Google Colab T4 GPU via Google Drive sync
 
 ### Motion Graphics (Overlays)
 
@@ -159,3 +165,15 @@ Each spec contains:
 | code-server (not desktop VS Code) | Playwright can automate a browser; can't automate a native app |
 | JSON spec-driven | Fully reproducible — re-run produces identical video |
 | Remotion for intro/outro | Complements Playwright (handles motion graphics, not screen recording) |
+| NVENC re-encode (optional) | 5-10x faster final encoding via Colab T4 GPU; libx264 stays as default |
+
+### Colab GPU Offloading
+
+| Component | Role |
+|---|---|
+| Google Colab T4 GPU | Remote GPU for TTS (F5-TTS) and video encoding (NVENC) |
+| Google Drive (rclone mount) | File sync bridge between local machine and Colab |
+| `colab/tts_worker.ipynb` | Kokoro GPU TTS worker |
+| `colab/f5_tts_worker.ipynb` | F5-TTS voice cloning worker |
+| `colab/encode_worker.ipynb` | NVENC video encoding worker |
+| `colab/colab_dispatcher.py` | Local-side job dispatchers (TTS, F5-TTS, NVENC) |

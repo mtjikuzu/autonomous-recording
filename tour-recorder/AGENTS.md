@@ -409,3 +409,47 @@ The pipeline auto-detects spec format:
 ### Discovery: Kokoro is faster on CPU than Colab T4
 
 Note that Kokoro-82M (RTF 0.50 local CPU vs 0.92 Colab T4) is too small to benefit from GPU acceleration. CUDA overhead hurts. F5-TTS (~300M params) is genuinely GPU-bound and benefits from T4.
+
+## NVENC GPU Video Encoding
+
+> Offload final video encoding to Colab T4 NVENC for faster encode times.
+
+### How It Works
+
+The pipeline assembles the video locally with `libx264`, then optionally re-encodes with NVENC on Colab T4:
+
+```
+assemble_*_video() → _maybe_nvenc_reencode() → apply_overlays() → Final MP4
+   (local libx264)      (Colab h264_nvenc)        (stream copy)
+```
+
+### Usage
+
+```bash
+# Enable NVENC encoding
+python record-tour.py tutorial.json --encode-backend colab-nvenc
+
+# Combine with F5-TTS
+python record-tour.py tutorial.json --tts-backend colab-f5 --encode-backend colab-nvenc
+```
+
+### Key Files
+
+| File | Purpose |
+|---|---|
+| colab/encode_worker.ipynb | NVENC GPU Colab notebook |
+| colab/colab_dispatcher.py | Includes `ColabNVENCDispatcher` |
+
+### CLI Flags
+
+| Flag | Default | Description |
+|---|---|---|
+| `--encode-backend` | `local` | `local` (libx264 CPU) or `colab-nvenc` (T4 GPU) |
+| `--nvenc-drive-path` | auto-detect | Path to Google Drive encode-jobs directory |
+| `--nvenc-timeout` | `1200` | Max seconds to wait for Colab worker |
+
+### When to Use
+
+- **Short videos (<2 min)**: Skip — local is fast enough
+- **Long videos (8+ min)**: Recommended — 5-10x speedup
+- **Batch processing**: Recommended
