@@ -1,0 +1,210 @@
+{
+  "meta": {
+    "title": "Java Linked List from Scratch Tutorial",
+    "description": "Guided coding walkthrough that builds, compiles, and runs LinkedList.java in code-server",
+    "target_duration_seconds": 600,
+    "max_duration_seconds": 780
+  },
+  "settings": {
+    "viewport": { "width": 1920, "height": 1080 },
+    "video_size": { "width": 1920, "height": 1080 },
+    "voice": "am_michael",
+    "speech_speed": 1.0,
+    "language": "en-us",
+    "default_step_timeout": 30,
+    "max_retries_per_step": 2,
+    "browser": "chromium",
+    "mode": "continuous",
+    "f5_ref_audio": "~/gdrive/autonomous-recording/voice-refs/reference-voice-short.wav",
+    "f5_ref_text": "The morning light filtered through the curtains, casting warm golden patterns across the wooden floor. Outside, a gentle rain had begun to fall.",
+    "f5_nfe_step": 32
+  },
+  "pre_setup": [
+    "mkdir -p /home/mtjikuzu/dev/autonomous-recording/workspaces/java-linkedlist",
+    "rm -f /home/mtjikuzu/dev/autonomous-recording/workspaces/java-linkedlist/LinkedList.java /home/mtjikuzu/dev/autonomous-recording/workspaces/java-linkedlist/LinkedList.class",
+    "touch /home/mtjikuzu/dev/autonomous-recording/workspaces/java-linkedlist/LinkedList.java"
+  ],
+  "steps": [
+    {
+      "id": "open-workspace",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-linkedlist",
+      "narration": "Welcome back. Today we are building a singly linked list from scratch in Java, and this is one of those topics that levels up how you think about data structures. An array is like a row of lockers with fixed positions. A linked list is more like a treasure hunt map, each node tells you where to go next. That pointer based mindset is exactly what interview questions and real systems expect you to understand. As I set things up, keep this in mind: we are not memorizing methods, we are building mental models you can reuse in stacks, queues, and graph traversal later.",
+      "actions": [
+        { "type": "wait_for_load" },
+        { "type": "wait_for_selector", "selector": ".monaco-workbench", "state": "visible", "timeout": 30000 },
+        { "type": "pause", "duration": 2.0 },
+        { "type": "dismiss_popups" },
+        { "type": "pause", "duration": 1.0 },
+        { "type": "press_key", "key": "Escape" },
+        { "type": "pause", "duration": 0.3 },
+        { "type": "press_key", "key": "Escape" },
+        { "type": "pause", "duration": 0.3 },
+        { "type": "press_key", "key": "Escape" },
+        { "type": "pause", "duration": 0.5 },
+        { "type": "command_palette", "command": "View: Close All Editors" },
+        { "type": "pause", "duration": 0.5 },
+        { "type": "hide_secondary_sidebar" },
+        { "type": "pause", "duration": 1.0 }
+      ],
+      "assertions": [
+        { "type": "url_contains", "value": "127.0.0.1:8080" }
+      ]
+    },
+    {
+      "id": "open-file",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-linkedlist",
+      "narration": "While I open our starter file, let me frame what we are about to design. Every operation in this class will revolve around one pointer called head. If head is correct, the whole list is reachable. If head is wrong, the list might as well not exist. That is why linked list bugs are usually pointer update bugs, not math bugs.",
+      "actions": [
+        { "type": "press_key", "key": "Escape" },
+        { "type": "pause", "duration": 0.3 },
+        { "type": "press_key", "key": "Control+p" },
+        { "type": "pause", "duration": 0.8 },
+        { "type": "type_text", "text": "LinkedList.java", "delay": 40 },
+        { "type": "pause", "duration": 0.5 },
+        { "type": "press_key", "key": "Enter" },
+        { "type": "pause", "duration": 2.0 },
+        { "type": "press_key", "key": "Escape" },
+        { "type": "pause", "duration": 0.5 },
+        { "type": "wait_for_selector", "selector": ".monaco-editor .view-lines", "state": "visible", "timeout": 10000 },
+        { "type": "hide_secondary_sidebar" },
+        { "type": "focus_editor" },
+        { "type": "select_all_and_delete" },
+        { "type": "pause", "duration": 0.8 }
+      ]
+    },
+    {
+      "id": "type-node-inner-class",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-linkedlist",
+      "narration": "First we define the class and the Node blueprint. A node stores two things: the value, and the pointer to the next node. Think of each node like a train car carrying cargo and a coupling hook to the next car. If that hook is null, you have reached the end of the train.",
+      "actions": [
+        { "type": "focus_editor" },
+        { "type": "type_text", "delay": 40, "text": "public class LinkedList {\n\n    private static class Node {\n        int data;\n        Node next;\n\n        Node(int data) {\n            this.data = data;\n            this.next = null;\n        }\n    }\n\n" },
+        { "type": "pause", "duration": 0.8 }
+      ]
+    },
+    {
+      "id": "type-fields-and-head-methods",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-linkedlist",
+      "narration": "Now we add the core state, the head pointer and a size counter, then write the constructor and addFirst. Prepending is the superpower of linked lists. We create a new node, point it at the old head, then move head forward to the new node. That is constant time because we never shift a whole block of memory like arrays do.",
+      "actions": [
+        { "type": "focus_editor" },
+        { "type": "press_key", "key": "Control+End" },
+        { "type": "pause", "duration": 0.3 },
+        { "type": "type_text", "delay": 40, "text": "    private Node head;\n    private int size;\n\n    public LinkedList() {\n        this.head = null;\n        this.size = 0;\n    }\n\n    public void addFirst(int data) {\n        Node newNode = new Node(data);\n        newNode.next = head;\n        head = newNode;\n        size++;\n    }\n\n" },
+        { "type": "pause", "duration": 0.8 }
+      ]
+    },
+    {
+      "id": "type-add-last",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-linkedlist",
+      "narration": "Next is addLast, appending at the tail. If the list is empty, head takes the new node immediately. Otherwise we walk pointer by pointer until current dot next is null, then attach the new node there. This traversal cost is why plain linked lists are not ideal when you append constantly unless you also keep a tail reference.",
+      "actions": [
+        { "type": "focus_editor" },
+        { "type": "press_key", "key": "Control+End" },
+        { "type": "pause", "duration": 0.3 },
+        { "type": "type_text", "delay": 40, "text": "    public void addLast(int data) {\n        Node newNode = new Node(data);\n\n        if (head == null) {\n            head = newNode;\n            size++;\n            return;\n        }\n\n        Node current = head;\n        while (current.next != null) {\n            current = current.next;\n        }\n\n        current.next = newNode;\n        size++;\n    }\n\n" },
+        { "type": "pause", "duration": 0.8 }
+      ]
+    },
+    {
+      "id": "type-display-method",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-linkedlist",
+      "narration": "A display method sounds simple, but it teaches traversal discipline. We start from head and move one step at a time until null. I like printing arrows between nodes because visually it reinforces that we are following links, not indexes. This method is also your best debugging tool when pointer logic gets tricky.",
+      "actions": [
+        { "type": "focus_editor" },
+        { "type": "press_key", "key": "Control+End" },
+        { "type": "pause", "duration": 0.3 },
+        { "type": "type_text", "delay": 40, "text": "    public void display() {\n        Node current = head;\n\n        while (current != null) {\n            System.out.print(current.data);\n            if (current.next != null) {\n                System.out.print(\" -> \" );\n            }\n            current = current.next;\n        }\n\n        System.out.println(\" -> null\");\n    }\n\n" },
+        { "type": "pause", "duration": 0.8 }
+      ]
+    },
+    {
+      "id": "type-insert-at-position",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-linkedlist",
+      "narration": "Now for insertAt position, which is all about carefully rewiring links. We validate bounds first, because pointer bugs often begin with invalid indexes. For position zero, we reuse addFirst. Otherwise we walk to the node just before the insertion point, splice newNode between previous and previous dot next, and the chain stays intact.",
+      "actions": [
+        { "type": "focus_editor" },
+        { "type": "press_key", "key": "Control+End" },
+        { "type": "pause", "duration": 0.3 },
+        { "type": "type_text", "delay": 40, "text": "    public void insertAt(int position, int data) {\n        if (position < 0 || position > size) {\n            System.out.println(\"Invalid position: \" + position);\n            return;\n        }\n\n        if (position == 0) {\n            addFirst(data);\n            return;\n        }\n\n        Node previous = head;\n        for (int i = 0; i < position - 1; i++) {\n            previous = previous.next;\n        }\n\n        Node newNode = new Node(data);\n        newNode.next = previous.next;\n        previous.next = newNode;\n        size++;\n    }\n\n" },
+        { "type": "pause", "duration": 0.8 }
+      ]
+    },
+    {
+      "id": "type-delete-by-value",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-linkedlist",
+      "narration": "Delete by value is a classic interview favorite because you have to track both current and previous nodes. If the head matches, deletion is just moving head to head dot next. Otherwise we scan until we find the value, bypass the matching node by linking previous directly to current dot next, and return whether deletion succeeded. Clean pointer choreography, no index math required.",
+      "actions": [
+        { "type": "focus_editor" },
+        { "type": "press_key", "key": "Control+End" },
+        { "type": "pause", "duration": 0.3 },
+        { "type": "type_text", "delay": 40, "text": "    public boolean deleteByValue(int value) {\n        if (head == null) {\n            return false;\n        }\n\n        if (head.data == value) {\n            head = head.next;\n            size--;\n            return true;\n        }\n\n        Node previous = head;\n        Node current = head.next;\n\n        while (current != null) {\n            if (current.data == value) {\n                previous.next = current.next;\n                size--;\n                return true;\n            }\n            previous = current;\n            current = current.next;\n        }\n\n        return false;\n    }\n\n" },
+        { "type": "pause", "duration": 0.8 }
+      ]
+    },
+    {
+      "id": "type-main-and-tests",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-linkedlist",
+      "narration": "Let us wrap with a main method that exercises every operation in sequence. I am intentionally testing both successful and failed deletes because robust code handles edge cases, not only happy paths. When this runs, watch how the printed chain changes after each operation. If the list shape changes exactly as expected, that is strong evidence our pointer updates are correct.",
+      "actions": [
+        { "type": "focus_editor" },
+        { "type": "press_key", "key": "Control+End" },
+        { "type": "pause", "duration": 0.3 },
+        { "type": "type_text", "delay": 40, "text": "    public static void main(String[] args) {\n        LinkedList list = new LinkedList();\n\n        list.addFirst(30);\n        list.addFirst(20);\n        list.addFirst(10);\n        System.out.println(\"After addFirst calls:\");\n        list.display();\n\n        list.addLast(40);\n        list.addLast(50);\n        System.out.println(\"After addLast calls:\");\n        list.display();\n\n        list.insertAt(2, 25);\n        System.out.println(\"After insertAt(2, 25):\");\n        list.display();\n\n        boolean removed = list.deleteByValue(40);\n        System.out.println(\"Delete 40 successful: \" + removed);\n        list.display();\n\n        boolean missing = list.deleteByValue(999);\n        System.out.println(\"Delete 999 successful: \" + missing);\n        list.display();\n\n        System.out.println(\"Current size: \" + list.size);\n    }\n}\n" },
+        { "type": "pause", "duration": 1.0 }
+      ]
+    },
+    {
+      "id": "save-file",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-linkedlist",
+      "narration": "As this saves, do a quick mental checklist. Node stores data plus next, head anchors the list, and each method only changes the links it must change. That discipline is what keeps linked list code reliable.",
+      "actions": [
+        { "type": "focus_editor" },
+        { "type": "press_key", "key": "Control+s" },
+        { "type": "pause", "duration": 1.0 }
+      ]
+    },
+    {
+      "id": "open-terminal-and-compile",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-linkedlist",
+      "narration": "Now we compile with javac. Compilation is where syntax mistakes and missing braces get caught early, before runtime behavior even starts. If javac stays quiet, that means our class and method structure is clean and Java accepted everything.",
+      "actions": [
+        { "type": "command_palette", "command": "Terminal: Create New Terminal" },
+        { "type": "pause", "duration": 3.0 },
+        { "type": "terminal_type", "text": "cd /home/mtjikuzu/dev/autonomous-recording/workspaces/java-linkedlist && javac LinkedList.java", "press_enter": true },
+        { "type": "pause", "duration": 3.0 }
+      ]
+    },
+    {
+      "id": "run-program",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-linkedlist",
+      "narration": "Great, now we run the program. You should see the list evolve step by step: prepend operations at the front, append operations at the back, insertion in the middle, then deletion by value. This output is our observable proof that the pointer rewiring works exactly as intended.",
+      "actions": [
+        { "type": "terminal_type", "text": "java LinkedList", "press_enter": true },
+        { "type": "pause", "duration": 4.0 }
+      ]
+    },
+    {
+      "id": "closing-explanation",
+      "url": "http://127.0.0.1:8080/?folder=/home/mtjikuzu/dev/autonomous-recording/workspaces/java-linkedlist",
+      "narration": "And that is a linked list built from scratch. Here is the practical takeaway. Arrays give you fast random access by index, but inserting at the front usually costs O of n because elements shift. Linked lists give O of 1 insertion at the head because you only update pointers, but accessing the tenth element still takes traversal. So choose based on workload: frequent middle or head inserts favor linked lists, heavy indexed lookups favor arrays. If you master this tradeoff, you are thinking like an engineer, not just memorizing syntax.",
+      "actions": [
+        { "type": "focus_editor" },
+        { "type": "highlight_lines", "from_line": 1, "to_line": 97 },
+        { "type": "pause", "duration": 3.0 }
+      ]
+    }
+  ],
+  "output": {
+    "path": "~/dev/autonomous-recording/output/linkedlist-tutorial.mp4",
+    "format": "mp4",
+    "video_codec": "libx264",
+    "video_preset": "medium",
+    "video_crf": 20,
+    "audio_codec": "aac",
+    "audio_bitrate": "192k",
+    "loudnorm": true,
+    "intro_clip": "~/dev/autonomous-recording/overlays/out/generic-intro.mp4",
+    "outro_clip": "~/dev/autonomous-recording/overlays/out/generic-outro.mp4"
+  }
+}
