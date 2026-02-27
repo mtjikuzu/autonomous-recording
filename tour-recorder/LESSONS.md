@@ -409,6 +409,38 @@ Run shell commands before recording starts. Use for:
 - Keep narration for typing-heavy steps shorter (the typing itself takes time)
 - Keep narration for terminal/compile steps descriptive (fills time while commands run)
 
+### TODO: Remove VS Code hand-holding from narration
+
+**Problem:** Several tutorials waste narration time explaining basic VS Code operations (opening files, saving, opening terminal) that the target audience already knows. This makes the videos feel padded and patronizing.
+
+**Affected narration (to rewrite or remove):**
+
+| Tutorial | Step | Offending narration |
+|---|---|---|
+| `arrays-total-tutorial.json` | `open-file` | Explains Quick Open with Ctrl+P, calls it a "keyboard shortcut that will save you hours" |
+| `arrays-total-tutorial.json` | `save-file` | Entire step dedicated to explaining Ctrl+S |
+| `functions-tutorial.json` | `open-file` | Explains Quick Open, says "you should absolutely have in your muscle memory" |
+| `functions-tutorial.json` | `save-file` | "Quick habit reminder, always save before you compile. Control S." |
+| `bubblesort-tutorial.json` | `create-file` | "We need to open up BubbleSort dot java" — states the obvious |
+| `bubblesort-tutorial.json` | `save-file` | "Quick save before we compile. Always save before running the compiler." |
+| `bubblesort-mixed-tutorial.json` | workspace setup | "We'll start by setting up our workspace" |
+| `bubblesort-mixed-tutorial.json` | save | "Good practice is to save your work regularly" |
+
+**Guideline:** Assume the viewer knows how to use VS Code. The `open-file`, `save-file`, and `open-terminal` steps should still exist (the actions are needed), but narration should either:
+1. **Be silent** — let the action happen without commentary
+2. **Use the time for something useful** — foreshadow what's coming next, recap what was just written, or add a teaching moment about the Java code itself
+
+**Example rewrite:**
+```
+// BEFORE (wastes time):
+"Let us open our file. We will use Quick Open with Control P, type the
+ filename, and we are in. This keyboard shortcut alone will save you hours."
+
+// AFTER (uses time productively):
+"While I open this up, think about what we're about to build. Three
+ methods, each summing an array differently, and one of them handles
+ edge cases the others don't."
+```
 ### Voice Configuration
 
 ```json
