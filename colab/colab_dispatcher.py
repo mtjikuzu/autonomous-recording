@@ -426,3 +426,261 @@ def create_f5_dispatcher_from_args(
         poll_interval=poll_interval,
     )
     return ColabF5TTSDispatcher(config)
+
+
+@dataclass
+class ColabNVENCConfig:
+    """Configuration for Colab NVENC encoding offload."""
+
+    drive_base: Path
+    timeout: float = 1200.0
+    poll_interval: float = 10.0
+    sync_delay: float = 15.0
+
+
+class ColabNVENCError(Exception):
+    """Raised when Colab NVENC dispatch fails."""
+
+    pass
+
+
+class ColabNVENCDispatcher:
+    """Dispatches video encoding jobs to Google Colab T4 NVENC via Google Drive."""
+
+    def __init__(self, config: ColabNVENCConfig) -> None:
+        self.config = config
+        self.drive_base = Path(os.path.expanduser(str(config.drive_base))).resolve()
+
+    def _log(self, message: str) -> None:
+        from datetime import datetime
+
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[{now}] [colab-nvenc] {message}", flush=True)
+
+    def _create_job_id(self) -> str:
+        """Generate a unique job ID based on timestamp."""
+        from datetime import datetime
+
+        return datetime.now().strftime("job-%Y%m%d-%H%M%S")
+
+    def dispatch_encode_job(
+        self,
+        operations: list[dict[str, object]],
+        input_files: dict[str, Path],
+        output_dir: Path,
+        output_format: dict[str, object] | None = None,
+    ) -> dict[str, Path]:
+        """Dispatch an encode job to Colab and wait for completed output files."""
+        if not self.drive_base.parent.exists():
+            raise ColabNVENCError(
+                f"Google Drive sync directory not found: {self.drive_base.parent}\n"
+                "Make sure Google Drive is mounted/synced on this machine."
+            )
+
+        if not operations:
+            raise ColabNVENCError("No encode operations provided")
+
+        self.drive_base.mkdir(parents=True, exist_ok=True)
+
+        job_id = self._create_job_id()
+        job_dir = self.drive_base / job_id
+        job_dir.mkdir(parents=True, exist_ok=True)
+
+        self._log(f"Creating NVENC encode job: {job_id}")
+        self._copy_input_files(input_files, job_dir)
+
+        request = {
+            "input_files": sorted(input_files.keys()),
+            "output_format": output_format
+            or {
+                "codec": "h264_nvenc",
+                "preset": "p7",
+                "cq": 20,
+                "audio_codec": "aac",
+                "audio_bitrate": "192k",
+                "video_filter": "fps=30,format=yuv420p",
+                "width": 1920,
+                "height": 1080,
+            },
+            "operations": operations,
+        }
+
+        request_path = job_dir / "request.json"
+        with request_path.open("w", encoding="utf-8") as f:
+            json.dump(request, f, indent=2)
+
+        self._log(
+            f"Job {job_id}: {len(input_files)} input file(s), {len(operations)} operation(s)"
+        )
+        self._log(f"Waiting {self.config.sync_delay:.0f}s for Drive sync...")
+        time.sleep(self.config.sync_delay)
+
+        self._wait_for_completion(job_id, job_dir)
+        return self._copy_results(job_dir, output_dir, operations)
+
+    def _copy_input_files(self, input_files: dict[str, Path], job_dir: Path) -> None:
+        """Copy source files into the job directory on Drive."""
+        for dest_name, src_path in input_files.items():
+            src = Path(src_path).expanduser().resolve()
+            if not src.exists():
+                raise ColabNVENCError(f"Input file does not exist: {src}")
+            if not src.is_file():
+                raise ColabNVENCError(f"Input path is not a file: {src}")
+
+            dest = job_dir / str(dest_name)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            _ = shutil.copy2(src, dest)
+            self._log(f"Copied input: {src.name} -> {dest.name}")
+
+    def _wait_for_completion(self, job_id: str, job_dir: Path) -> None:
+        """Poll for done.marker or error.marker from Colab worker."""
+        done_marker = job_dir / "done.marker"
+        error_marker = job_dir / "error.marker"
+
+        deadline = time.time() + self.config.timeout
+        last_status = ""
+
+        self._log(
+            f"Waiting for Colab worker on {job_id} "
+            f"(timeout: {self.config.timeout:.0f}s)..."
+        )
+
+        while time.time() < deadline:
+            if error_marker.exists():
+                try:
+                    with error_marker.open("r", encoding="utf-8") as f:
+                        error_info = json.load(f)
+                    raise ColabNVENCError(
+                        f"Colab worker reported error: {error_info.get('error', 'unknown')}"
+                    )
+                except json.JSONDecodeError:
+                    raise ColabNVENCError(
+                        "Colab worker reported error (could not read details)"
+                    )
+
+            if done_marker.exists():
+                self._log("Job completed by Colab worker!")
+                break
+
+            elapsed = self.config.timeout - (deadline - time.time())
+            status = f"waiting... ({elapsed:.0f}s elapsed)"
+            if status != last_status:
+                output_count = 0
+                for path in job_dir.glob("**/*"):
+                    if path.is_file() and path.name not in {
+                        "request.json",
+                        "done.marker",
+                        "error.marker",
+                    }:
+                        output_count += 1
+                if output_count > 0:
+                    status = (
+                        f"processing... ({output_count} file(s) present, "
+                        f"{elapsed:.0f}s elapsed)"
+                    )
+                self._log(status)
+                last_status = status
+
+            time.sleep(self.config.poll_interval)
+        else:
+            raise ColabNVENCError(
+                f"Timeout waiting for Colab worker ({self.config.timeout:.0f}s).\n"
+                "Check that:\n"
+                "  1. The Colab notebook is running (encode_worker.ipynb)\n"
+                "  2. The watcher cell (cell 13) is executing\n"
+                "  3. Google Drive sync is working on both ends\n"
+                f"  Job directory: {job_dir}"
+            )
+
+        try:
+            with done_marker.open("r", encoding="utf-8") as f:
+                completion = json.load(f)
+            self._log(
+                f"Results: {completion.get('operation_count', '?')} operations, "
+                f"{completion.get('elapsed_sec', 0):.2f}s elapsed"
+            )
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+    def _copy_results(
+        self,
+        job_dir: Path,
+        output_dir: Path,
+        operations: list[dict[str, object]],
+    ) -> dict[str, Path]:
+        """Copy output files produced by operations back to local output_dir."""
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        output_names: list[str] = []
+        for operation in operations:
+            output_name = operation.get("output")
+            if isinstance(output_name, str) and output_name.strip():
+                output_names.append(output_name)
+
+        if not output_names:
+            raise ColabNVENCError("No operation outputs defined")
+
+        copied: dict[str, Path] = {}
+        for name in output_names:
+            remote_path = job_dir / name
+            if not remote_path.exists():
+                raise ColabNVENCError(
+                    f"Expected output file not found: {remote_path}\n"
+                    "The Colab worker may not have generated all outputs."
+                )
+
+            local_path = output_dir / Path(name).name
+            _ = shutil.copy2(remote_path, local_path)
+            copied[name] = local_path
+
+            size_mb = local_path.stat().st_size / (1024 * 1024)
+            self._log(f"  copied {name} -> {local_path.name} ({size_mb:.2f} MB)")
+
+        self._log(f"Copied {len(copied)} output file(s) to {output_dir}")
+        return copied
+
+    def cleanup_job(self, job_id: str) -> None:
+        """Remove a completed job from Drive (optional cleanup)."""
+        job_dir = self.drive_base / job_id
+        if job_dir.exists():
+            shutil.rmtree(job_dir)
+            self._log(f"Cleaned up job: {job_id}")
+
+
+def create_nvenc_dispatcher_from_args(
+    drive_path: str | None = None,
+    timeout: float = 1200.0,
+    poll_interval: float = 10.0,
+) -> ColabNVENCDispatcher:
+    """Create dispatcher from CLI args or env vars.
+
+    Priority: explicit arg > COLAB_NVENC_DRIVE_PATH env > default path
+    """
+    if drive_path is None:
+        drive_path = os.environ.get("COLAB_NVENC_DRIVE_PATH")
+
+    if drive_path is None:
+        candidates = [
+            Path.home() / "gdrive" / "autonomous-recording" / "encode-jobs",
+            Path.home()
+            / "Google Drive"
+            / "My Drive"
+            / "autonomous-recording"
+            / "encode-jobs",
+        ]
+        for candidate in candidates:
+            if candidate.parent.exists():
+                drive_path = str(candidate)
+                break
+
+        if drive_path is None:
+            drive_path = str(
+                Path.home() / "gdrive" / "autonomous-recording" / "encode-jobs"
+            )
+
+    config = ColabNVENCConfig(
+        drive_base=Path(drive_path),
+        timeout=timeout,
+        poll_interval=poll_interval,
+    )
+    return ColabNVENCDispatcher(config)
