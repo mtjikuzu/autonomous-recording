@@ -102,6 +102,7 @@ def ensure_tooling() -> None:
     if not Path(KOKORO_VOICES).exists():
         raise TourError(f"Missing Kokoro voices: {KOKORO_VOICES}")
 
+
 def run_pre_setup(spec: dict[str, Any]) -> None:
     commands = spec.get("pre_setup", [])
     if not commands:
@@ -129,14 +130,16 @@ def load_tour_spec(spec_path: Path) -> dict[str, Any]:
     # Allow either traditional 'steps' or new 'segments' format
     has_steps = "steps" in spec
     has_segments = "segments" in spec
-    
+
     if not has_steps and not has_segments:
         raise TourError("Spec must have either 'steps' or 'segments' field")
-    
+
     if has_steps and (not isinstance(spec["steps"], list) or not spec["steps"]):
         raise TourError("Spec 'steps' must be a non-empty array")
-    
-    if has_segments and (not isinstance(spec["segments"], list) or not spec["segments"]):
+
+    if has_segments and (
+        not isinstance(spec["segments"], list) or not spec["segments"]
+    ):
         raise TourError("Spec 'segments' must be a non-empty array")
 
     meta = spec["meta"]
@@ -197,7 +200,9 @@ def load_tour_spec(spec_path: Path) -> dict[str, Any]:
         for field in ("id", "narration"):
             if field not in item:
                 item_type = "step" if "steps" in spec else "segment"
-                raise TourError(f"{item_type.capitalize()} {idx} missing required field: {field}")
+                raise TourError(
+                    f"{item_type.capitalize()} {idx} missing required field: {field}"
+                )
         item_id = str(item["id"])
         if item_id in item_ids:
             raise TourError(f"Duplicate id: {item_id}")
@@ -509,10 +514,12 @@ def execute_actions(page: Any, step: dict[str, Any], timeout_ms: int) -> None:
                     ta.focus();
                     return 'focused';
                 }""")
-                if focused != 'focused':
-                    log(f"Step {step['id']}: JS terminal focus returned: {focused}, trying fallback")
+                if focused != "focused":
+                    log(
+                        f"Step {step['id']}: JS terminal focus returned: {focused}, trying fallback"
+                    )
                     # Fallback: click the panel area with force
-                    page.locator('.terminal-wrapper.active').first.click(force=True)
+                    page.locator(".terminal-wrapper.active").first.click(force=True)
                 page.wait_for_timeout(300)
                 page.keyboard.type(text, delay=0)
                 if press_enter:
@@ -966,7 +973,7 @@ def transcode_step_clip(webm_path: Path, output_mp4_path: Path) -> None:
 
 def normalize_overlay_clip(input_path: Path, output_path: Path) -> None:
     """Normalize an intro/outro MP4 overlay to match the recording format.
-    
+
     Overlays are pre-rendered by Remotion at 1920x1080. We normalize to ensure
     consistent codec, framerate, and pixel format for ffmpeg concat.
     Silent audio track is added so concat works with audio-containing main video.
@@ -1010,7 +1017,7 @@ def apply_overlays(
     assembly_dir: Path,
 ) -> Path:
     """Prepend intro and/or append outro overlay clips to the main video.
-    
+
     Reads intro_clip and outro_clip paths from spec['output'].
     If neither is set, returns main_video unchanged.
     """
@@ -1034,12 +1041,28 @@ def apply_overlays(
     # Normalize main video to match overlay format for reliable concat
     main_normalized = assembly_dir / "main-for-concat.mp4"
     cmd_norm = [
-        FFMPEG_BIN, "-y", "-i", str(main_video),
-        "-vf", "fps=30,format=yuv420p",
-        "-c:v", "libx264", "-preset", "medium", "-crf", "20",
-        "-ac", "1", "-ar", "24000",
-        "-c:a", "aac", "-b:a", "192k",
-        "-movflags", "+faststart",
+        FFMPEG_BIN,
+        "-y",
+        "-i",
+        str(main_video),
+        "-vf",
+        "fps=30,format=yuv420p",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "medium",
+        "-crf",
+        "20",
+        "-ac",
+        "1",
+        "-ar",
+        "24000",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-movflags",
+        "+faststart",
         str(main_normalized),
     ]
     run_cmd(cmd_norm, "Normalize main video for overlay concat")
@@ -1062,7 +1085,9 @@ def apply_overlays(
         for clip in clips_to_concat:
             handle.write(f"file '{clip.as_posix()}'\n")
 
-    final_with_overlays = main_video.parent / f"{main_video.stem}-with-overlays{main_video.suffix}"
+    final_with_overlays = (
+        main_video.parent / f"{main_video.stem}-with-overlays{main_video.suffix}"
+    )
     cmd = [
         FFMPEG_BIN,
         "-y",
@@ -1339,10 +1364,81 @@ def _dispatch_colab_tts(
 
     log("Phase B: dispatching TTS to Colab GPU worker")
     dispatcher = create_dispatcher_from_args(
-        drive_path=getattr(args, 'colab_drive_path', None),
-        timeout=getattr(args, 'colab_timeout', 600.0),
+        drive_path=getattr(args, "colab_drive_path", None),
+        timeout=getattr(args, "colab_timeout", 600.0),
     )
     return dispatcher.dispatch_and_wait(spec, audio_dir)
+
+
+def _dispatch_colab_nvenc_encode(
+    args: argparse.Namespace,
+    input_files: dict[str, Path],
+    operations: list[dict[str, Any]],
+    output_dir: Path,
+) -> dict[str, Path]:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from colab.colab_dispatcher import create_nvenc_dispatcher_from_args
+
+    log("Phase D: dispatching encoding to Colab T4 NVENC worker")
+    dispatcher = create_nvenc_dispatcher_from_args(
+        drive_path=getattr(args, "nvenc_drive_path", None),
+        timeout=getattr(args, "nvenc_timeout", 1200.0),
+    )
+    return dispatcher.dispatch_encode_job(
+        operations=operations,
+        input_files=input_files,
+        output_dir=output_dir,
+    )
+
+
+def _maybe_nvenc_reencode(
+    video_path: Path,
+    args: argparse.Namespace,
+    assembly_dir: Path,
+) -> Path:
+    if getattr(args, "encode_backend", "local") != "colab-nvenc":
+        return video_path
+
+    log("Phase D: re-encoding with Colab T4 NVENC")
+
+    input_name = video_path.name
+    output_name = f"{video_path.stem}-nvenc{video_path.suffix}"
+    operations = [
+        {
+            "type": "transcode",
+            "input": input_name,
+            "output": output_name,
+        }
+    ]
+
+    results = _dispatch_colab_nvenc_encode(
+        args=args,
+        input_files={input_name: video_path},
+        operations=operations,
+        output_dir=assembly_dir,
+    )
+
+    nvenc_path = results.get(output_name)
+    if nvenc_path and nvenc_path.exists():
+        os.replace(nvenc_path, video_path)
+        log(f"Phase D: NVENC re-encode complete ({ffprobe_duration(video_path):.2f}s)")
+    else:
+        log("Phase D: NVENC re-encode failed, keeping local encode")
+
+    return video_path
+
+
+def _coerce_audio_paths(step_audio: dict[str, Any]) -> dict[str, Path]:
+    audio_paths: dict[str, Path] = {}
+    for step_id, audio_info in step_audio.items():
+        if isinstance(audio_info, dict):
+            audio_value = audio_info.get("path")
+        else:
+            audio_value = audio_info
+        if audio_value is None:
+            raise TourError(f"Missing audio path for {step_id}")
+        audio_paths[step_id] = Path(audio_value)
+    return audio_paths
 
 
 def _dispatch_colab_f5_tts(
@@ -1356,8 +1452,8 @@ def _dispatch_colab_f5_tts(
 
     log("Phase B: dispatching F5-TTS (voice cloning) to Colab GPU worker")
     dispatcher = create_f5_dispatcher_from_args(
-        drive_path=getattr(args, 'colab_drive_path', None),
-        timeout=getattr(args, 'colab_timeout', 600.0),
+        drive_path=getattr(args, "colab_drive_path", None),
+        timeout=getattr(args, "colab_timeout", 600.0),
     )
     return dispatcher.dispatch_and_wait(spec, audio_dir)
 
@@ -1394,6 +1490,22 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=600.0,
         help="Max seconds to wait for Colab TTS worker (default: 600)",
+    )
+    parser.add_argument(
+        "--encode-backend",
+        choices=["local", "colab-nvenc"],
+        default="local",
+        help="Video encoding backend: 'local' (libx264 CPU) or 'colab-nvenc' (T4 GPU NVENC)",
+    )
+    parser.add_argument(
+        "--nvenc-drive-path",
+        help="Path to Google Drive sync dir for NVENC encoding jobs (default: ~/gdrive/autonomous-recording/encode-jobs)",
+    )
+    parser.add_argument(
+        "--nvenc-timeout",
+        type=float,
+        default=1200.0,
+        help="Max seconds to wait for Colab NVENC worker (default: 1200)",
     )
     return parser.parse_args()
 
@@ -1438,11 +1550,17 @@ def main() -> int:
 
             # Prerender TTS for all segments
             if args.tts_backend == "colab":
-                step_audio = _dispatch_colab_tts(spec, dirs["audio"], args)
+                step_audio = _coerce_audio_paths(
+                    _dispatch_colab_tts(spec, dirs["audio"], args)
+                )
             elif args.tts_backend == "colab-f5":
-                step_audio = _dispatch_colab_f5_tts(spec, dirs["audio"], args)
+                step_audio = _coerce_audio_paths(
+                    _dispatch_colab_f5_tts(spec, dirs["audio"], args)
+                )
             else:
-                step_audio = prerender_tts_mixed(spec, dirs["audio"], skip_tts=args.skip_tts)
+                step_audio = prerender_tts_mixed(
+                    spec, dirs["audio"], skip_tts=args.skip_tts
+                )
 
             log("Phase C: running mixed capture (slides + demos)")
             results = run_mixed_capture(
@@ -1452,13 +1570,19 @@ def main() -> int:
             final_path: Path | None = None
             if not args.dry_run:
                 final_path = assemble_mixed_video(spec, results, step_audio, dirs)
+                if final_path is not None:
+                    final_path = _maybe_nvenc_reencode(
+                        final_path, args, dirs["assembly"]
+                    )
                 # Apply intro/outro overlays if configured
                 if final_path is not None:
                     final_path = apply_overlays(spec, final_path, dirs["assembly"])
         else:
             # Traditional step-based workflow
             for step in spec["steps"]:
-                log(f"Phase A: step {step['id']} budget {step['time_budget_seconds']:.2f}s")
+                log(
+                    f"Phase A: step {step['id']} budget {step['time_budget_seconds']:.2f}s"
+                )
 
             run_pre_setup(spec)
 
@@ -1476,7 +1600,9 @@ def main() -> int:
                 )
             else:
                 log("Phase C: running in independent capture mode")
-                results = run_capture_phase(spec, step_audio, dirs, dry_run=args.dry_run)
+                results = run_capture_phase(
+                    spec, step_audio, dirs, dry_run=args.dry_run
+                )
 
             final_path: Path | None = None
             if not args.dry_run:
@@ -1484,6 +1610,10 @@ def main() -> int:
                     final_path = assemble_continuous_video(spec, results, dirs)
                 else:
                     final_path = assemble_video(spec, results, dirs)
+                if final_path is not None:
+                    final_path = _maybe_nvenc_reencode(
+                        final_path, args, dirs["assembly"]
+                    )
                 # Apply intro/outro overlays if configured
                 if final_path is not None:
                     final_path = apply_overlays(spec, final_path, dirs["assembly"])
@@ -1513,16 +1643,27 @@ def generate_slides_via_gamma(spec: dict[str, Any], work_dir: Path) -> Path | No
 
     # Try to use Gamma API if available
     try:
-        from gamma_client import GammaClient, GammaError
+        import importlib.util
+
+        gamma_client_path = Path(__file__).parent / "gamma_client.py"
+        spec_obj = importlib.util.spec_from_file_location(
+            "tour_recorder_gamma_client", gamma_client_path
+        )
+        if spec_obj is None or spec_obj.loader is None:
+            raise TourError(
+                f"Unable to load gamma_client module from {gamma_client_path}"
+            )
+        gamma_module = importlib.util.module_from_spec(spec_obj)
+        spec_obj.loader.exec_module(gamma_module)
+        GammaClient = gamma_module.GammaClient
+
         client = GammaClient()
 
         content = slides_config.get("content", [])
         theme = slides_config.get("theme", "Chisel")
 
         result_dir = client.generate_presentation(
-            title=spec["meta"]["title"],
-            content=content,
-            theme=theme
+            title=spec["meta"]["title"], content=content, theme=theme
         )
 
         # Copy generated slides to cache directory
@@ -1538,7 +1679,7 @@ def generate_slides_via_gamma(spec: dict[str, Any], work_dir: Path) -> Path | No
         return create_placeholder_slides(slides_config, slides_dir)
 
 
-def create_placeholder_slides(slides_config: dict, slides_dir: Path) -> Path:
+def create_placeholder_slides(slides_config: dict[str, Any], slides_dir: Path) -> Path:
     """Create placeholder slide images when Gamma API is unavailable."""
     try:
         from PIL import Image, ImageDraw, ImageFont
@@ -1547,25 +1688,29 @@ def create_placeholder_slides(slides_config: dict, slides_dir: Path) -> Path:
 
         for i, slide in enumerate(content, 1):
             # Create 1920x1080 image with dark background
-            img = Image.new('RGB', (1920, 1080), '#0D1117')
+            img = Image.new("RGB", (1920, 1080), "#0D1117")
             draw = ImageDraw.Draw(img)
 
             # Title
             title = slide.get("title", "Slide")
             try:
-                font_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 72)
-                font_body = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 48)
+                font_title = ImageFont.truetype(
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 72
+                )
+                font_body = ImageFont.truetype(
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 48
+                )
             except:
                 font_title = ImageFont.load_default()
                 font_body = font_title
 
             # Draw title
-            draw.text((960, 200), title, fill='#F7C948', font=font_title, anchor='mt')
+            draw.text((960, 200), title, fill="#F7C948", font=font_title, anchor="mt")
 
             # Draw bullet points
             y = 400
             for point in slide.get("bullet_points", []):
-                draw.text((200, y), f"• {point}", fill='#FFFFFF', font=font_body)
+                draw.text((200, y), f"• {point}", fill="#FFFFFF", font=font_body)
                 y += 80
 
             # Save
@@ -1581,11 +1726,7 @@ def create_placeholder_slides(slides_config: dict, slides_dir: Path) -> Path:
 
 
 def record_slide_segment(
-    browser,
-    slides_dir: Path,
-    segment: dict[str, Any],
-    audio_path: Path,
-    work_dir: Path
+    browser, slides_dir: Path, segment: dict[str, Any], audio_path: Path, work_dir: Path
 ) -> Path:
     """Record a slide segment showing Gamma-generated slides."""
     slide_range = segment.get("slides", {}).get("range", [1, 1])
@@ -1605,7 +1746,7 @@ def record_slide_segment(
     context = browser.new_context(
         viewport={"width": 1920, "height": 1080},
         record_video_dir=str(work_dir / "clips"),
-        record_video_size={"width": 1920, "height": 1080}
+        record_video_size={"width": 1920, "height": 1080},
     )
 
     try:
@@ -1622,6 +1763,7 @@ def record_slide_segment(
 
         # Wait for audio duration + padding
         import soundfile as sf
+
         audio_duration, _ = sf.read(audio_path)
         duration = len(audio_duration) / sf.info(audio_path).samplerate
 
@@ -1643,7 +1785,7 @@ def run_mixed_capture(
     step_audio: dict[str, Path],
     dirs: dict[str, Path],
     slides_dir: Path | None,
-    dry_run: bool = False
+    dry_run: bool = False,
 ) -> list[StepResult]:
     """Run mixed slide/demo capture for segment-based specs."""
     if dry_run:
@@ -1678,27 +1820,31 @@ def run_mixed_capture(
                             browser, segment, audio_path, dirs
                         )
 
-                    results.append(StepResult(
-                        step_id=seg_id,
-                        attempt_count=1,
-                        success=True,
-                        clip_path=clip_path,
-                        audio_path=audio_path,
-                        audio_duration=0.0,
-                        step_elapsed=0.0
-                    ))
+                    results.append(
+                        StepResult(
+                            step_id=seg_id,
+                            attempt_count=1,
+                            success=True,
+                            clip_path=clip_path,
+                            audio_path=audio_path,
+                            audio_duration=0.0,
+                            step_elapsed=0.0,
+                        )
+                    )
 
                 except Exception as e:
                     log(f"Segment {seg_id} failed: {e}")
-                    results.append(StepResult(
-                        step_id=seg_id,
-                        attempt_count=1,
-                        success=False,
-                        clip_path=None,
-                        audio_path=audio_path,
-                        audio_duration=0.0,
-                        step_elapsed=0.0
-                    ))
+                    results.append(
+                        StepResult(
+                            step_id=seg_id,
+                            attempt_count=1,
+                            success=False,
+                            clip_path=None,
+                            audio_path=audio_path,
+                            audio_duration=0.0,
+                            step_elapsed=0.0,
+                        )
+                    )
 
         finally:
             browser.close()
@@ -1707,10 +1853,7 @@ def run_mixed_capture(
 
 
 def record_demo_segment(
-    browser,
-    segment: dict[str, Any],
-    audio_path: Path,
-    dirs: dict[str, Path]
+    browser, segment: dict[str, Any], audio_path: Path, dirs: dict[str, Path]
 ) -> Path:
     """Record a demo segment (existing code-server capture logic)."""
     # Reuse existing continuous capture logic for a single segment
@@ -1723,7 +1866,7 @@ def record_demo_segment(
     context = browser.new_context(
         viewport={"width": 1920, "height": 1080},
         record_video_dir=str(dirs["clips"]),
-        record_video_size={"width": 1920, "height": 1080}
+        record_video_size={"width": 1920, "height": 1080},
     )
 
     try:
@@ -1736,6 +1879,7 @@ def record_demo_segment(
 
         # Wait for audio to finish
         import soundfile as sf
+
         audio_duration, _ = sf.read(audio_path)
         duration = len(audio_duration) / sf.info(audio_path).samplerate
         page.wait_for_timeout(int(duration * 1000))
@@ -1765,7 +1909,7 @@ def run_action(page, action: dict[str, Any]) -> None:
         page.wait_for_selector(
             action["selector"],
             state=action.get("state", "visible"),
-            timeout=action.get("timeout", 10000)
+            timeout=action.get("timeout", 10000),
         )
     elif action_type == "press_key":
         page.keyboard.press(action["key"])
@@ -1857,7 +2001,7 @@ def assemble_mixed_video(
     spec: dict[str, Any],
     results: list[StepResult],
     step_audio: dict[str, Path],
-    dirs: dict[str, Path]
+    dirs: dict[str, Path],
 ) -> Path:
     """Assemble mixed slide/demo segments with audio into final video."""
     log("Phase D: assembling mixed segment video with audio")
@@ -1873,17 +2017,28 @@ def assemble_mixed_video(
         if not result.success or not result.clip_path:
             log(f"Phase D: skipping failed segment {result.step_id}")
             continue
-        
+
         audio_path = step_audio.get(result.step_id)
         if not audio_path or not audio_path.exists():
             log(f"Phase D: missing audio for {result.step_id}, using silent")
             # Create silent audio
             silent_audio = assembly_dir / f"{result.step_id}-silent.wav"
-            cmd = [FFMPEG_BIN, "-y", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono",
-                   "-t", "10", "-acodec", "pcm_s16le", str(silent_audio)]
+            cmd = [
+                FFMPEG_BIN,
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "anullsrc=r=24000:cl=mono",
+                "-t",
+                "10",
+                "-acodec",
+                "pcm_s16le",
+                str(silent_audio),
+            ]
             subprocess.run(cmd, capture_output=True)
             audio_path = silent_audio
-        
+
         segments_with_audio.append((result.clip_path, audio_path))
 
     if not segments_with_audio:
@@ -1893,18 +2048,34 @@ def assemble_mixed_video(
     normalized_clips: list[Path] = []
     for i, (video_path, audio_path) in enumerate(segments_with_audio):
         normalized = assembly_dir / f"segment-{i:03d}-normalized.mp4"
-        
+
         # Mux video with audio, normalize to consistent format
         cmd = [
-            FFMPEG_BIN, "-y",
-            "-i", str(video_path),
-            "-i", str(audio_path),
-            "-vf", "fps=30,format=yuv420p",
-            "-c:v", "libx264", "-preset", "medium", "-crf", "20",
-            "-ac", "1", "-ar", "24000",
-            "-c:a", "aac", "-b:a", "192k",
+            FFMPEG_BIN,
+            "-y",
+            "-i",
+            str(video_path),
+            "-i",
+            str(audio_path),
+            "-vf",
+            "fps=30,format=yuv420p",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-crf",
+            "20",
+            "-ac",
+            "1",
+            "-ar",
+            "24000",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
             "-shortest",
-            "-movflags", "+faststart",
+            "-movflags",
+            "+faststart",
             str(normalized),
         ]
         run_cmd(cmd, f"Normalize segment {i} with audio")
@@ -1920,11 +2091,18 @@ def assemble_mixed_video(
     final_path.parent.mkdir(parents=True, exist_ok=True)
 
     cmd = [
-        FFMPEG_BIN, "-y",
-        "-f", "concat", "-safe", "0",
-        "-i", str(concat_list),
-        "-c", "copy",
-        "-movflags", "+faststart",
+        FFMPEG_BIN,
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        str(concat_list),
+        "-c",
+        "copy",
+        "-movflags",
+        "+faststart",
         str(final_path),
     ]
 
